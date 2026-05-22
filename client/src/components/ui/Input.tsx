@@ -6,7 +6,7 @@ interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement | H
   label?: string;
   type?: 'text' | 'email' | 'password' | 'number' | 'select' | 'textarea' | 'checkbox';
   error?: string;
-  icon?: string; // Emoji or short symbol
+  icon?: React.ReactNode; // React node or emoji
   options?: Array<{ value: string; label: string }>; // For select type
 }
 
