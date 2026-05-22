@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from '@/components/ui/Sidebar';
+import { AIChatbot } from '@/components/ui/AIChatbot';
 
 export default function DashboardLayout({
   children
@@ -76,6 +77,9 @@ export default function DashboardLayout({
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto">
           {children}
         </main>
+
+        {/* Global Floating AI Chatbot Assistant */}
+        <AIChatbot />
       </div>
     </div>
   );
