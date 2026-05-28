@@ -8,7 +8,7 @@ interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'college_admin' | 'hod' | 'faculty' | 'student';
+  role: 'super_admin' | 'college_admin' | 'hod' | 'faculty' | 'student' | 'parent';
   collegeId: string;
   collegeName?: string;
   collegeCode?: string;
@@ -70,27 +70,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('accessToken', token);
       setAccessToken(token);
       
-      if (token === 'mock-access-token') {
-        // Fall back to student as default mock user if local storage was reloaded without active context
-        setUser((prev) => prev || {
-          id: 'mock-student-id',
-          name: 'Amit Kumar',
-          email: 'student@uscdle.edu',
-          role: 'student',
-          collegeId: 'mock-college-id',
-          collegeName: 'Delhi University',
-          collegeCode: 'DU',
-          studentData: {
-            rollNumber: 'CSE-2023-045',
-            semester: 3,
-            department: { _id: 'dept-cse', name: 'Computer Science', code: 'CSE' },
-            enrolledCourses: ['CSC-201', 'CSC-305', 'ECE-301', 'MAT-301', 'SEC-201', 'VAC-101'],
-            hasFaceEncoding: true
-          }
-        });
-        return;
-      }
-      
       const res = await api.get('/auth/me');
       if (res.success && res.data) {
         setUser(res.data);
@@ -105,13 +84,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const silentAuth = async () => {
     try {
-      const savedToken = localStorage.getItem('accessToken');
-      if (savedToken === 'mock-access-token') {
-        await loadProfile(savedToken);
-        setIsLoading(false);
-        return;
-      }
-
       const res = await api.post('/auth/refresh', {});
       if (res.success && res.data?.accessToken) {
         await loadProfile(res.data.accessToken);
@@ -148,79 +120,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           router.push('/student/dashboard');
         } else if (role === 'faculty' || role === 'hod') {
           router.push('/faculty/dashboard');
+        } else if (role === 'parent') {
+          router.push('/parent/dashboard');
         } else {
           router.push('/admin/dashboard');
         }
 
         return { success: true };
-      }
-
-      // Check for demo fallback if API fails or is unreachable
-      const lowerEmail = email.toLowerCase();
-      if (password === 'password' || lowerEmail.endsWith('@uscdle.edu')) {
-        let mockProfile: UserProfile | null = null;
-        if (lowerEmail === 'student@uscdle.edu') {
-          mockProfile = {
-            id: 'mock-student-id',
-            name: 'Amit Kumar',
-            email: 'student@uscdle.edu',
-            role: 'student',
-            collegeId: 'mock-college-id',
-            collegeName: 'Delhi University',
-            collegeCode: collegeCode || 'DU',
-            studentData: {
-              rollNumber: 'CSE-2023-045',
-              semester: 3,
-              department: { _id: 'dept-cse', name: 'Computer Science', code: 'CSE' },
-              enrolledCourses: ['CSC-201', 'CSC-305', 'ECE-301', 'MAT-301', 'SEC-201', 'VAC-101'],
-              hasFaceEncoding: true
-            }
-          };
-        } else if (lowerEmail === 'faculty@uscdle.edu') {
-          mockProfile = {
-            id: 'mock-faculty-id',
-            name: 'Dr. Rajesh Kumar',
-            email: 'faculty@uscdle.edu',
-            role: 'faculty',
-            collegeId: 'mock-college-id',
-            collegeName: 'Delhi University',
-            collegeCode: collegeCode || 'DU',
-            facultyData: {
-              employeeId: 'EMP-FAC-992',
-              designation: 'Associate Professor',
-              department: { _id: 'dept-cse', name: 'Computer Science', code: 'CSE' },
-              assignedCourses: ['CSC-201', 'CSC-201P', 'CSC-401'],
-              maxHoursPerWeek: 16,
-              specializations: ['Data Structures', 'Algorithms']
-            }
-          };
-        } else if (lowerEmail === 'admin@uscdle.edu') {
-          mockProfile = {
-            id: 'mock-admin-id',
-            name: 'Admin Officer',
-            email: 'admin@uscdle.edu',
-            role: 'college_admin',
-            collegeId: 'mock-college-id',
-            collegeName: 'Delhi University',
-            collegeCode: collegeCode || 'DU'
-          };
-        }
-
-        if (mockProfile) {
-          localStorage.setItem('accessToken', 'mock-access-token');
-          setAccessToken('mock-access-token');
-          setUser(mockProfile);
-          setIsLoading(false);
-
-          if (mockProfile.role === 'student') {
-            router.push('/student/dashboard');
-          } else if (mockProfile.role === 'faculty') {
-            router.push('/faculty/dashboard');
-          } else {
-            router.push('/admin/dashboard');
-          }
-          return { success: true };
-        }
       }
 
       setIsLoading(false);
@@ -238,7 +144,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (res.success && res.data) {
         await loadProfile(res.data.accessToken);
         setIsLoading(false);
-        router.push('/admin/dashboard');
+
+        // Dynamic role-based redirect after registration
+        const role = res.data.user?.role || data.role;
+        if (role === 'student') {
+          router.push('/student/dashboard');
+        } else if (role === 'faculty' || role === 'hod') {
+          router.push('/faculty/dashboard');
+        } else if (role === 'parent') {
+          router.push('/parent/dashboard');
+        } else {
+          router.push('/admin/dashboard');
+        }
         return { success: true };
       }
       setIsLoading(false);

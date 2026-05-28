@@ -58,6 +58,49 @@ io.on('connection', (socket) => {
     console.log(`👤 Socket ${socket.id} joined room: ${roomId}`);
   });
 
+  socket.on('send-notification', (data) => {
+    console.log(`📢 Broadcasting simulated notification:`, data);
+    io.emit('new-notification', data);
+  });
+
+  // --- Real-time Attendance & Security Events ---
+  socket.on('session:start', (data) => {
+    console.log(`🚀 Broadcast session:start:`, data);
+    io.emit('session:start', data);
+  });
+
+  socket.on('attendance:update', (data) => {
+    console.log(`📊 Broadcast attendance:update:`, data);
+    if (data.sessionId) {
+      io.to(`session_${data.sessionId}`).emit('attendance:update', data);
+    } else {
+      io.emit('attendance:update', data);
+    }
+  });
+
+  socket.on('security:alert', (data) => {
+    console.log(`⚠️ Broadcast security:alert:`, data);
+    if (data.sessionId) {
+      io.to(`session_${data.sessionId}`).emit('security:alert', data);
+    } else {
+      io.emit('security:alert', data);
+    }
+  });
+
+  socket.on('notification:new', (data) => {
+    console.log(`📢 Broadcast notification:new:`, data);
+    io.emit('notification:new', data);
+  });
+
+  socket.on('student:checkedin', (data) => {
+    console.log(`👤 Broadcast student:checkedin:`, data);
+    if (data.sessionId) {
+      io.to(`session_${data.sessionId}`).emit('student:checkedin', data);
+    } else {
+      io.emit('student:checkedin', data);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log(`🔌 Socket disconnected: ${socket.id}`);
   });
@@ -66,8 +109,18 @@ io.on('connection', (socket) => {
 // Export socket io object for use in controllers/services later
 export { io };
 
+// Process crash safety handlers
+process.on('uncaughtException', (error) => {
+  console.error('💥 CRITICAL: Uncaught Exception occurred:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Start Server
 const PORT = env.PORT;
 httpServer.listen(PORT, () => {
-  console.log(`🚀 USCDLE API Server running on port ${PORT} in ${env.NODE_ENV} mode`);
+  console.log(`🚀 SmartEdu Campus API Server running on port ${PORT} in ${env.NODE_ENV} mode`);
 });
+

@@ -38,7 +38,8 @@ export const apiFetch = async <T = any>(
 
   const config: RequestInit = {
     ...options,
-    headers
+    headers,
+    credentials: 'include'
   };
 
   try {
@@ -51,7 +52,8 @@ export const apiFetch = async <T = any>(
         try {
           const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
           });
           const refreshData = await refreshRes.json();
           

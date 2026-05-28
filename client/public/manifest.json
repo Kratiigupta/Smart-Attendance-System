@@ -1,0 +1,9 @@
+{
+  "name": "SmartEdu",
+  "short_name": "SmartEdu",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "description": "Unified Smart Campus & Digital Learning Ecosystem"
+}

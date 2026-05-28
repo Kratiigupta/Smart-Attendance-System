@@ -5,7 +5,7 @@ export interface AuthRequest extends Request {
   user?: {
     userId: string;
     collegeId: string;
-    role: 'super_admin' | 'college_admin' | 'hod' | 'faculty' | 'student';
+    role: 'super_admin' | 'college_admin' | 'hod' | 'faculty' | 'student' | 'parent';
     email: string;
   };
 }

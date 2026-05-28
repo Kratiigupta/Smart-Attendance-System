@@ -1,13 +1,59 @@
 @import "tailwindcss";
 
+:root {
+  --bg-primary: #06060f;
+  --bg-secondary: #0c0b1d;
+  --bg-card: #12112a;
+  --bg-hover: #1a1940;
+  --bg-input: #0e0d22;
+  --bg-elevated: #18173a;
+  --bg-surface: #141330;
+
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-dim: #475569;
+
+  --border: #1e1d3d;
+  --border-light: #2a2952;
+
+  --glass-bg: rgba(18, 17, 42, 0.65);
+  --glass-border: rgba(30, 29, 61, 0.7);
+  --glass-strong-bg: rgba(18, 17, 42, 0.85);
+  --glass-strong-border: rgba(30, 29, 61, 0.9);
+}
+
+:root.light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+  --bg-input: #f8fafc;
+  --bg-elevated: #ffffff;
+  --bg-surface: #f1f5f9;
+
+  --text-primary: #020617;
+  --text-secondary: #1e293b;
+  --text-muted: #334155;
+  --text-dim: #475569;
+
+  --border: #94a3b8;
+  --border-light: #cbd5e1;
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(148, 163, 184, 0.8);
+  --glass-strong-bg: rgba(255, 255, 255, 0.9);
+  --glass-strong-border: rgba(148, 163, 184, 0.9);
+}
+
 @theme {
-  --color-bg-primary: #06060f;
-  --color-bg-secondary: #0c0b1d;
-  --color-bg-card: #12112a;
-  --color-bg-hover: #1a1940;
-  --color-bg-input: #0e0d22;
-  --color-bg-elevated: #18173a;
-  --color-bg-surface: #141330;
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-card: var(--bg-card);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-input: var(--bg-input);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-surface: var(--bg-surface);
 
   --color-primary: #6366f1;
   --color-primary-light: #818cf8;
@@ -25,13 +71,13 @@
   --color-cyan: #06b6d4;
   --color-cyan-light: #22d3ee;
 
-  --color-text-primary: #f1f5f9;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
-  --color-text-dim: #475569;
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-dim: var(--text-dim);
 
-  --color-border: #1e1d3d;
-  --color-border-light: #2a2952;
+  --color-border: var(--border);
+  --color-border-light: var(--border-light);
   --color-border-focus: #6366f1;
 
   --color-success: #10b981;
@@ -112,30 +158,32 @@
 
 /* ===== BASE ===== */
 body {
-  background-color: #06060f;
-  color: #f1f5f9;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   min-height: 100vh;
   font-family: var(--font-sans), system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ===== GLASS UTILITIES ===== */
 .glass {
-  background: rgba(18, 17, 42, 0.65);
+  background: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(30, 29, 61, 0.7);
+  border: 1px solid var(--glass-border);
 }
 .glass-strong {
-  background: rgba(18, 17, 42, 0.85);
+  background: var(--glass-strong-bg);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(30, 29, 61, 0.9);
+  border: 1px solid var(--glass-strong-border);
 }
 .glass-light {
-  background: rgba(18, 17, 42, 0.4);
+  background: var(--glass-bg);
+  opacity: 0.8;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(30, 29, 61, 0.4);
+  border: 1px solid var(--glass-border);
 }
 
 /* ===== GRADIENT TEXT ===== */

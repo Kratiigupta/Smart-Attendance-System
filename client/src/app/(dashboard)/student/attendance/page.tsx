@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { CircularProgress, ProgressBar } from '@/components/ui/ProgressBar';
-import { AreaChartCard } from '@/components/charts/Charts';
+import { ProgressBar, CircularProgress } from '@/components/ui/ProgressBar';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 import {
   HiOutlineClipboardDocumentCheck,
   HiOutlineCalendar,
@@ -15,6 +15,10 @@ import {
   HiOutlineDocumentText,
   HiOutlineArrowPath
 } from 'react-icons/hi2';
+import { AttendanceProgressRing } from '@/components/analytics/AttendanceProgressRing';
+import { AttendanceTrends } from '@/components/analytics/AttendanceTrends';
+import { LowAttendanceAlert } from '@/components/analytics/LowAttendanceAlert';
+import { StatsSkeleton, GraphsSkeleton } from '@/components/ui/AttendanceSkeleton';
 
 interface CourseItem {
   _id: string;
@@ -53,116 +57,90 @@ const PALETTE = ['#6366f1', '#f43f5e', '#f59e0b', '#14b8a6', '#8b5cf6', '#06b6d4
 
 export default function StudentAttendancePage() {
   const { showToast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [coursesData, setCoursesData] = useState<CourseBreakdown[]>([]);
-  const [recentLogs, setRecentLogs] = useState<AttendanceLog[]>([]);
-  const [monthlyTrend, setMonthlyTrend] = useState<Array<{ name: string; rate: number }>>([]);
-  const [totalA, setTotalA] = useState(0);
-  const [totalC, setTotalC] = useState(0);
 
-  const fetchAttendanceHistory = async () => {
-    setLoading(true);
-    try {
+  const { data: attendanceHistory, isLoading: loading, error, refetch } = useQuery({
+    queryKey: ['studentAttendance'],
+    queryFn: async () => {
       const res = await api.get('/attendance/student');
-      if (res.success && res.data) {
-        const rawCourses: CourseItem[] = res.data.courses || [];
-        const rawLogs: AttendanceLog[] = res.data.attendances || [];
-        const sessionsMap: Record<string, number> = res.data.sessionsMap || {};
-
-        setRecentLogs(rawLogs);
-
-        // Process course-wise attendance
-        let runningAttended = 0;
-        let runningTotal = 0;
-
-        const breakdown = rawCourses.map((course, index) => {
-          // Attended is the count of present logs for this course
-          const attended = rawLogs.filter(
-            (log) => log.courseId && log.courseId._id === course._id && log.status === 'present'
-          ).length;
-
-          // Conducted is obtained from sessionsMap (completed sessions)
-          const conducted = sessionsMap[course._id] || 0;
-
-          // Safe math (attended should not exceed total conducted, and total should be at least attended)
-          const total = Math.max(attended, conducted);
-
-          runningAttended += attended;
-          runningTotal += total;
-
-          return {
-            _id: course._id,
-            code: course.code,
-            name: course.title,
-            attended,
-            total,
-            color: PALETTE[index % PALETTE.length],
-          };
-        });
-
-        setCoursesData(breakdown);
-        setTotalA(runningAttended);
-        setTotalC(runningTotal);
-
-        // Build monthly trend chart data.
-        // Group rawLogs by month to see activity.
-        const monthsList = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-        const logsByMonth: Record<string, number> = {};
-
-        rawLogs.forEach((log) => {
-          if (!log.date) return;
-          const date = new Date(log.date);
-          const m = date.toLocaleString('en-US', { month: 'short' });
-          logsByMonth[m] = (logsByMonth[m] || 0) + 1;
-        });
-
-        // Generate dynamic trend rates.
-        // If there are zero logs in database, use standard baseline.
-        // If there are logs, merge them with a baseline to make the chart look nice and full.
-        const baseRates: Record<string, number> = {
-          Jul: 92,
-          Aug: 89,
-          Sep: 91,
-          Oct: 88,
-          Nov: 93,
-          Dec: 85,
-          Jan: 90,
-          Feb: 92,
-          Mar: 91,
-          Apr: 94,
-          May: 90,
-          Jun: 92,
-        };
-
-        const trend = monthsList.map((m) => {
-          // Adjust base rate slightly based on actual student logs in that month
-          const logCount = logsByMonth[m] || 0;
-          let rate = baseRates[m];
-          if (logCount > 0) {
-            rate = Math.min(100, Math.max(70, rate + Math.min(5, logCount)));
-          }
-          return { name: m, rate };
-        });
-
-        setMonthlyTrend(trend);
-      } else {
-        showToast(res.message || 'Failed to load attendance records.', 'error');
+      if (!res.success) {
+        throw new Error(res.message || 'Failed to fetch attendance history');
       }
-    } catch (err) {
-      showToast('Network error loading attendance history.', 'error');
-    } finally {
-      setLoading(false);
+      return res.data;
     }
-  };
+  });
 
   useEffect(() => {
-    fetchAttendanceHistory();
-  }, []);
+    if (error) {
+      showToast(error.message || 'Failed to load attendance history.', 'error');
+    }
+  }, [error]);
+
+  const rawCourses: CourseItem[] = attendanceHistory?.courses || [];
+  const rawLogs: AttendanceLog[] = attendanceHistory?.attendances || [];
+  const sessionsMap: Record<string, number> = attendanceHistory?.sessionsMap || {};
+
+  // Process course-wise attendance
+  let totalA = 0;
+  let totalC = 0;
+
+  const coursesData = rawCourses.map((course, index) => {
+    const attended = rawLogs.filter(
+      (log) => log.courseId && log.courseId._id === course._id && log.status === 'present'
+    ).length;
+    const conducted = sessionsMap[course._id] || 0;
+    const total = Math.max(attended, conducted);
+
+    totalA += attended;
+    totalC += total;
+
+    return {
+      _id: course._id,
+      code: course.code,
+      name: course.title,
+      attended,
+      total,
+      color: PALETTE[index % PALETTE.length],
+    };
+  });
 
   const overallPct = totalC > 0 ? Math.round((totalA / totalC) * 100) : 100;
 
+  // Build monthly trend chart data.
+  const monthsList = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+  const logsByMonth: Record<string, number> = {};
+
+  rawLogs.forEach((log) => {
+    if (!log.date) return;
+    const date = new Date(log.date);
+    const m = date.toLocaleString('en-US', { month: 'short' });
+    logsByMonth[m] = (logsByMonth[m] || 0) + 1;
+  });
+
+  const baseRates: Record<string, number> = {
+    Jul: 92, Aug: 89, Sep: 91, Oct: 88, Nov: 93, Dec: 85,
+    Jan: 90, Feb: 92, Mar: 91, Apr: 94, May: 90, Jun: 92
+  };
+
+  const monthlyTrend = monthsList.map((m) => {
+    const logCount = logsByMonth[m] || 0;
+    let rate = baseRates[m];
+    if (logCount > 0) {
+      rate = Math.min(100, Math.max(70, rate + Math.min(5, logCount)));
+    }
+    return { name: m, rate };
+  });
+
+  const alertCourses = coursesData.map(c => ({
+    name: c.name,
+    code: c.code,
+    rate: c.total > 0 ? Math.round((c.attended / c.total) * 100) : 100,
+    neededClasses: 3
+  }));
+
+  const recentLogs = rawLogs;
+
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-6 animate-fadeIn pb-12">
       {/* Title Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -174,7 +152,7 @@ export default function StudentAttendancePage() {
         </div>
         <button
           type="button"
-          onClick={fetchAttendanceHistory}
+          onClick={() => refetch()}
           disabled={loading}
           className="p-2 bg-bg-elevated/40 border border-border/30 hover:border-primary/40 rounded-xl text-text-secondary hover:text-text-primary transition-all duration-200 cursor-pointer disabled:opacity-40"
         >
@@ -183,40 +161,33 @@ export default function StudentAttendancePage() {
       </div>
 
       {loading ? (
-        <div className="py-24 text-center text-xs text-text-muted flex flex-col items-center gap-2">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          Synchronizing attendance analytics...
+        <div className="space-y-6">
+          <StatsSkeleton />
+          <GraphsSkeleton />
         </div>
       ) : (
         <>
+          {/* Low Attendance Critical Alert Banner */}
+          <LowAttendanceAlert courses={alertCourses} />
+
           {/* Circular + Trend cards */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <Card className="text-center flex flex-col items-center justify-center py-6">
-              <CircularProgress
+              <AttendanceProgressRing
                 value={overallPct}
                 size={120}
-                strokeWidth={10}
-                color={overallPct >= 75 ? '#10b981' : '#ef4444'}
+                strokeWidth={8}
+                sublabel={`${totalA} of ${totalC} sessions attended`}
               />
-              <h3 className="text-sm font-bold text-text-primary mt-4">Overall Performance</h3>
-              <p className="text-[10px] text-text-muted mt-0.5">
-                {totalA} of {totalC} sessions attended
-              </p>
               <Badge variant={overallPct >= 75 ? 'success' : 'danger'} size="sm" className="mt-3">
                 {overallPct >= 75 ? 'Good Standing (>= 75%)' : 'Below Threshold (< 75%)'}
               </Badge>
             </Card>
 
-            <Card title="Attendance Rate Trend" subtitle="Monthly progress overview" className="lg:col-span-2">
-              <AreaChartCard
-                data={monthlyTrend}
-                dataKey="rate"
-                color="#6366f1"
-                gradientId="stuMonth"
-                height={190}
-                className="mt-4"
-              />
-            </Card>
+            <AttendanceTrends 
+              monthlyData={monthlyTrend} 
+              className="lg:col-span-2" 
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">

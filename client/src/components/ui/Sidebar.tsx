@@ -22,6 +22,8 @@ import {
   HiOutlineUserGroup,
   HiOutlineBellAlert,
   HiOutlineHomeModern,
+  HiOutlineUser,
+  HiOutlineSparkles,
 } from 'react-icons/hi2';
 import { IconType } from 'react-icons';
 
@@ -58,12 +60,24 @@ const facultyNavItems: NavItem[] = [
 
 const studentNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/student/dashboard', icon: HiOutlineHome },
-  { label: 'Mark Attendance', href: '/student/mark-attendance', icon: HiOutlineQrCode, badge: 'Scan' },
-  { label: 'My Attendance', href: '/student/attendance', icon: HiOutlineClipboardDocumentCheck },
-  { label: 'My Timetable', href: '/student/timetable', icon: HiOutlineCalendarDays },
-  { label: 'My Fees', href: '/student/fees', icon: HiOutlineCreditCard },
-  { label: 'Learn', href: '/student/learn', icon: HiOutlineBookOpen },
+  { label: 'Attendance', href: '/student/attendance', icon: HiOutlineClipboardDocumentCheck },
+  { label: 'Timetable', href: '/student/timetable', icon: HiOutlineCalendarDays },
+  { label: 'Assignments', href: '/student/assignments', icon: HiOutlineClipboardDocumentList },
+  { label: 'Exams', href: '/student/exams', icon: HiOutlineAcademicCap },
+  { label: 'Fees', href: '/student/fees', icon: HiOutlineCreditCard },
+  { label: 'Learning Hub', href: '/student/learn', icon: HiOutlineBookOpen },
+  { label: 'AI Assistant', href: '/student/ai-assistant', icon: HiOutlineSparkles, badge: 'AI' },
   { label: 'Notifications', href: '/student/notifications', icon: HiOutlineBellAlert },
+  { label: 'Profile', href: '/student/profile', icon: HiOutlineUser },
+  { label: 'Settings', href: '/student/settings', icon: HiOutlineCog6Tooth },
+];
+
+const parentNavItems: NavItem[] = [
+  { label: 'Dashboard', href: '/parent/dashboard', icon: HiOutlineHome },
+  { label: 'Child Attendance', href: '/parent/attendance', icon: HiOutlineClipboardDocumentCheck },
+  { label: 'Fees', href: '/parent/fees', icon: HiOutlineCreditCard },
+  { label: 'Notifications', href: '/parent/notifications', icon: HiOutlineBellAlert },
+  { label: 'Settings', href: '/parent/settings', icon: HiOutlineCog6Tooth },
 ];
 
 function getNavItems(role?: string): NavItem[] {
@@ -76,6 +90,8 @@ function getNavItems(role?: string): NavItem[] {
       return facultyNavItems;
     case 'student':
       return studentNavItems;
+    case 'parent':
+      return parentNavItems;
     default:
       return [];
   }
@@ -97,17 +113,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: SidebarProps) {
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="h-16 flex items-center gap-2.5 px-5 border-b border-border/50 shrink-0">
-        <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/20">
-          <span className="text-lg">🎓</span>
-        </div>
-        <div className="flex flex-col">
-          <span className="font-heading font-extrabold text-sm tracking-widest gradient-text">
-            USCDLE
-          </span>
-          <span className="text-[9px] text-text-muted font-medium tracking-wider uppercase">
-            Smart Campus
-          </span>
-        </div>
+        <img src="/logo.png" alt="SmartEdu Campus Logo" className="h-10 w-auto object-contain" />
       </div>
 
       {/* User Profile Card */}

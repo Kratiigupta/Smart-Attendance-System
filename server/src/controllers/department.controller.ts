@@ -1,41 +1,23 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { Department } from '../models/Department.js';
-import { User } from '../models/User.js';
+import { departmentSchema } from '../validators/department.validator.js';
+import {
+  createDepartmentData,
+  getDepartmentsList,
+  getDepartmentDetails,
+  updateDepartmentData,
+  deleteDepartmentData
+} from '../services/department.service.js';
 import { AuthRequest } from '../middleware/auth.js';
-
-const departmentSchema = z.object({
-  name: z.string().min(2),
-  code: z.string().min(2).max(10).toUpperCase(),
-  hodId: z.string().optional().nullable()
-});
 
 export const createDepartment = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const collegeId = req.user?.collegeId;
-    const { name, code, hodId } = departmentSchema.parse(req.body);
-
-    // Validate duplicate code
-    const duplicate = await Department.findOne({ collegeId, code });
-    if (duplicate) {
-      throw { status: 400, message: `Department code ${code} already exists in this college.` };
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
 
-    // Validate HOD if provided
-    if (hodId) {
-      const hod = await User.findOne({ _id: hodId, collegeId });
-      if (!hod) {
-        throw { status: 404, message: 'Designated HOD user not found.' };
-      }
-    }
-
-    const dept = new Department({
-      collegeId,
-      name,
-      code,
-      hodId: hodId || undefined
-    });
-    await dept.save();
+    const body = departmentSchema.parse(req.body);
+    const dept = await createDepartmentData(collegeId, body);
 
     return res.status(201).json({
       success: true,
@@ -50,9 +32,11 @@ export const createDepartment = async (req: AuthRequest, res: Response, next: Ne
 export const getDepartments = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const collegeId = req.user?.collegeId;
-    const depts = await Department.find({ collegeId })
-      .populate('hodId', 'name email phone')
-      .sort({ name: 1 });
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
+    }
+
+    const depts = await getDepartmentsList(collegeId);
 
     return res.status(200).json({
       success: true,
@@ -67,11 +51,11 @@ export const getDepartmentById = async (req: AuthRequest, res: Response, next: N
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
-
-    const dept = await Department.findOne({ _id: id, collegeId }).populate('hodId', 'name email phone');
-    if (!dept) {
-      throw { status: 404, message: 'Department not found.' };
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
+
+    const dept = await getDepartmentDetails(collegeId, id);
 
     return res.status(200).json({
       success: true,
@@ -86,39 +70,12 @@ export const updateDepartment = async (req: AuthRequest, res: Response, next: Ne
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
-    const { name, code, hodId } = departmentSchema.parse(req.body);
-
-    // Check duplicate code excluding current department
-    if (code) {
-      const duplicate = await Department.findOne({ collegeId, code, _id: { $ne: id } });
-      if (duplicate) {
-        throw { status: 400, message: `Department code ${code} is already allocated to another department.` };
-      }
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
 
-    // Validate HOD if provided
-    if (hodId) {
-      const hod = await User.findOne({ _id: hodId, collegeId });
-      if (!hod) {
-        throw { status: 404, message: 'Designated HOD user not found.' };
-      }
-    }
-
-    const dept = await Department.findOneAndUpdate(
-      { _id: id, collegeId },
-      { 
-        $set: { 
-          name, 
-          code, 
-          hodId: hodId || undefined 
-        } 
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!dept) {
-      throw { status: 404, message: 'Department not found.' };
-    }
+    const body = departmentSchema.parse(req.body);
+    const dept = await updateDepartmentData(collegeId, id, body);
 
     return res.status(200).json({
       success: true,
@@ -134,11 +91,11 @@ export const deleteDepartment = async (req: AuthRequest, res: Response, next: Ne
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
-
-    const dept = await Department.findOneAndDelete({ _id: id, collegeId });
-    if (!dept) {
-      throw { status: 404, message: 'Department not found.' };
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
+
+    await deleteDepartmentData(collegeId, id);
 
     return res.status(200).json({
       success: true,

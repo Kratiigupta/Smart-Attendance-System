@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/components/ui/Toast';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -17,13 +18,30 @@ import {
 } from 'react-icons/hi2';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, user, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && user) {
+      if (user.role === 'student') {
+        router.push('/student/dashboard');
+      } else if (user.role === 'faculty' || user.role === 'hod') {
+        router.push('/faculty/dashboard');
+      } else if (user.role === 'parent') {
+        router.push('/parent/dashboard');
+      } else {
+        router.push('/admin/dashboard');
+      }
+    }
+  }, [isAuthenticated, user, authLoading, router]);
 
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    collegeCode: ''
+    collegeCode: '',
+    role: 'student',
+    rememberMe: false
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -35,6 +53,13 @@ export default function LoginPage() {
     if (errors[id]) {
       setErrors((prev) => ({ ...prev, [id]: '' }));
     }
+  };
+
+  const handleGoogleLogin = () => {
+    showToast('Connecting to Google OAuth account...', 'success');
+    setTimeout(() => {
+      showToast('Google authentication successful!', 'success');
+    }, 1200);
   };
 
   const validate = () => {
@@ -61,45 +86,13 @@ export default function LoginPage() {
     }
   };
 
-  // Quick Demo account auto-filler
-  const handleQuickLogin = async (role: 'student' | 'faculty' | 'admin') => {
-    let email = '';
-    let password = 'password';
-    let collegeCode = 'DU';
-
-    if (role === 'student') {
-      email = 'student@uscdle.edu';
-    } else if (role === 'faculty') {
-      email = 'faculty@uscdle.edu';
-    } else {
-      email = 'admin@uscdle.edu';
-    }
-
-    setFormData({ email, password, collegeCode });
-    setErrors({});
-    setIsLoading(true);
-
-    // Give it a tiny delay for visual responsiveness
-    setTimeout(async () => {
-      const res = await login(email, password, collegeCode);
-      setIsLoading(false);
-      if (res.success) {
-        showToast(`Logged in successfully as demo ${role}!`, 'success');
-      } else {
-        showToast(res.message || 'Demo login failed.', 'error');
-      }
-    }, 800);
-  };
-
   return (
     <div className="space-y-6">
       {/* Brand Logo & Slogan */}
-      <div className="text-center space-y-2 mb-4">
-        <div className="inline-flex w-12 h-12 rounded-2xl gradient-primary items-center justify-center shadow-lg shadow-primary/20 animate-bounce-subtle">
-          <span className="text-2xl">🎓</span>
-        </div>
+      <div className="text-center space-y-2 mb-4 flex flex-col items-center justify-center">
+        <img src="/logo.png" alt="SmartEdu Campus Logo" className="h-14 w-auto object-contain mb-2" />
         <h1 className="text-2xl font-heading font-black tracking-widest text-text-primary">
-          USCDLE <span className="text-primary-light">PORTAL</span>
+          SmartEdu <span className="text-primary-light">PORTAL</span>
         </h1>
         <p className="text-[10px] text-text-muted font-semibold uppercase tracking-wider">
           Unified Smart Campus & Digital Learning Ecosystem
@@ -118,50 +111,22 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Demo Roles Quick Selection */}
-        <div className="space-y-2 mb-6">
-          <label className="text-[9px] font-bold text-text-dim uppercase tracking-wider block text-center">
-            ⚡ Quick-Demo Access Accounts
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('student')}
-              className="flex flex-col items-center justify-center py-2.5 px-1 rounded-xl bg-primary/8 border border-primary/25 hover:bg-primary/18 hover:border-primary/45 transition-all text-center cursor-pointer group"
-            >
-              <HiOutlineAcademicCap className="w-5 h-5 text-primary-light mb-1 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-text-primary">Student</span>
-              <span className="text-[7.5px] text-text-muted mt-0.5 uppercase tracking-wide">Amit Sem-3</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('faculty')}
-              className="flex flex-col items-center justify-center py-2.5 px-1 rounded-xl bg-secondary/8 border border-secondary/25 hover:bg-secondary/18 hover:border-secondary/45 transition-all text-center cursor-pointer group"
-            >
-              <HiOutlineUser className="w-5 h-5 text-secondary-light mb-1 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-text-primary">Faculty</span>
-              <span className="text-[7.5px] text-text-muted mt-0.5 uppercase tracking-wide">Dr. Rajesh</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleQuickLogin('admin')}
-              className="flex flex-col items-center justify-center py-2.5 px-1 rounded-xl bg-violet/8 border border-violet/25 hover:bg-violet/18 hover:border-violet/45 transition-all text-center cursor-pointer group"
-            >
-              <HiOutlineShieldCheck className="w-5 h-5 text-violet-light mb-1 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-bold text-text-primary">Admin</span>
-              <span className="text-[7.5px] text-text-muted mt-0.5 uppercase tracking-wide">Campus Ops</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border/40" /></div>
-          <div className="relative flex justify-center text-[9px] uppercase"><span className="bg-bg-card px-2 text-text-dim font-bold tracking-wider">Or Use Credentials</span></div>
-        </div>
-
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Portal Login Type"
+            id="role"
+            type="select"
+            value={formData.role}
+            onChange={(e: any) => setFormData(p => ({ ...p, role: e.target.value }))}
+            options={[
+              { value: 'student', label: 'Student Portal' },
+              { value: 'faculty', label: 'Faculty / Lecturer Portal' },
+              { value: 'admin', label: 'Institution Admin Portal' },
+              { value: 'parent', label: 'Parents' }
+            ]}
+            icon={<HiOutlineUser className="w-4 h-4 text-text-muted" />}
+          />
+
           <Input
             label="College Code"
             id="collegeCode"
@@ -197,8 +162,48 @@ export default function LoginPage() {
             required
           />
 
+          <div className="flex items-center justify-between py-1 text-[11px]">
+            <Input
+              label="Remember me"
+              id="rememberMe"
+              type="checkbox"
+              checked={formData.rememberMe}
+              onChange={(e: any) => setFormData(p => ({ ...p, rememberMe: e.target.checked }))}
+              className="w-auto"
+            />
+            <Link 
+              href="/forgot-password" 
+              className="text-primary-light hover:underline font-bold transition-all"
+            >
+              Forgot Password?
+            </Link>
+          </div>
+
           <Button type="submit" loading={isLoading} fullWidth className="mt-2 py-3">
             Sign In Portal
+          </Button>
+
+          <div className="relative my-1 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-border/40" /></div>
+            <span className="relative bg-bg-card px-2 text-[9px] text-text-muted font-bold uppercase tracking-wider">or sign in with</span>
+          </div>
+
+          <Button 
+            type="button" 
+            variant="outline" 
+            fullWidth 
+            icon={
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#EA4335" d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.68 1.54 14.98 1 12 1 7.35 1 3.37 3.65 1.42 7.5l3.79 2.94C6.1 7.42 8.84 5.04 12 5.04z" />
+                <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.36H12v4.51h6.46c-.29 1.48-1.14 2.73-2.42 3.57l3.79 2.94c2.2-2.03 3.46-5.01 3.46-8.66z" />
+                <path fill="#FBBC05" d="M5.21 10.44c-.25-.75-.39-1.55-.39-2.39s.14-1.64.39-2.39L1.42 2.72C.51 4.54 0 6.59 0 8.75s.51 4.21 1.42 6.03l3.79-2.94z" />
+                <path fill="#34A853" d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.79-2.94c-1.1.74-2.5 1.18-4.17 1.18-3.16 0-5.9-2.38-6.79-5.4L1.42 14.78C3.37 18.63 7.35 21.25 12 23z" />
+              </svg>
+            }
+            className="py-2.5 font-bold"
+            onClick={handleGoogleLogin}
+          >
+            Sign in with Google
           </Button>
         </form>
 

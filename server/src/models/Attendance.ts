@@ -3,9 +3,12 @@ import { Schema, model, Document, Types } from 'mongoose';
 export interface IAttendance extends Document {
   collegeId: Types.ObjectId;
   studentId: Types.ObjectId;
+  student: Types.ObjectId;
   courseId: Types.ObjectId;
   classSessionId: Types.ObjectId;
+  session: Types.ObjectId;
   date: Date;
+  timestamp: Date;
   status: 'present' | 'absent' | 'late';
   verifiedAt: Date;
   verificationMethod: 'qr' | 'manual';
@@ -19,9 +22,12 @@ const attendanceSchema = new Schema<IAttendance>(
   {
     collegeId: { type: Schema.Types.ObjectId, ref: 'College', required: true, index: true },
     studentId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    student: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     courseId: { type: Schema.Types.ObjectId, ref: 'Course', required: true, index: true },
     classSessionId: { type: Schema.Types.ObjectId, ref: 'ClassSession', required: true, index: true },
+    session: { type: Schema.Types.ObjectId, ref: 'ClassSession', required: true, index: true },
     date: { type: Date, required: true, default: Date.now },
+    timestamp: { type: Date, required: true, default: Date.now },
     status: { type: String, enum: ['present', 'absent', 'late'], default: 'present', required: true },
     verifiedAt: { type: Date, required: true, default: Date.now },
     verificationMethod: { type: String, enum: ['qr', 'manual'], default: 'qr', required: true },
@@ -30,6 +36,17 @@ const attendanceSchema = new Schema<IAttendance>(
   },
   { timestamps: true }
 );
+
+attendanceSchema.pre('validate', function(next) {
+  if (!this.student && this.studentId) this.student = this.studentId;
+  if (!this.session && this.classSessionId) this.session = this.classSessionId;
+  if (!this.timestamp && this.date) this.timestamp = this.date;
+
+  if (!this.studentId && this.student) this.studentId = this.student;
+  if (!this.classSessionId && this.session) this.classSessionId = this.session;
+  if (!this.date && this.timestamp) this.date = this.timestamp;
+  next();
+});
 
 // Compound index to prevent double attendance of same student in same class session
 attendanceSchema.index({ classSessionId: 1, studentId: 1 }, { unique: true });

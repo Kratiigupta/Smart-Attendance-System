@@ -8,7 +8,7 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
-import { getSocket, disconnectSocket } from '@/lib/socket';
+import { getSocket } from '@/lib/socket';
 import {
   HiOutlineQrCode,
   HiOutlineStopCircle,
@@ -17,6 +17,9 @@ import {
   HiOutlineBuildingOffice2,
   HiOutlineClock
 } from 'react-icons/hi2';
+import { TimelineLog, SecurityTimeline } from '@/components/security/SecurityTimeline';
+import { ProxyAlert, ProxyAlertsPanel } from '@/components/security/ProxyAlertsPanel';
+import { StatsSkeleton, CardSkeleton } from '@/components/ui/AttendanceSkeleton';
 
 interface StudentCheckIn {
   studentId: {
@@ -44,11 +47,16 @@ export default function FacultyStartClassPage() {
   const [roomName, setRoomName] = useState('LH-301');
   const [isLoading, setIsLoading] = useState(false);
   const [coursesLoading, setCoursesLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
 
   // Active Session State
   const [activeSession, setActiveSession] = useState<any>(null);
   const [checkIns, setCheckIns] = useState<StudentCheckIn[]>([]);
   const [timer, setTimer] = useState(30);
+
+  // Security Feeds Mock State
+  const [timelineLogs, setTimelineLogs] = useState<TimelineLog[]>([]);
+  const [proxyAlerts, setProxyAlerts] = useState<ProxyAlert[]>([]);
 
   // Load courses on mount
   useEffect(() => {
@@ -122,13 +130,55 @@ export default function FacultyStartClassPage() {
     socket.emit('join-room', `session_${activeSession._id}`);
 
     // Listen for check-in events
-    socket.on('student-checked-in', (data: StudentCheckIn) => {
-      // Append student to checked-in list if not already present
+    const handleCheckIn = (data: StudentCheckIn) => {
       setCheckIns((prev: StudentCheckIn[]) => {
-        if (prev.some(c => c.studentId._id === data.studentId._id)) return prev;
+        if (prev.some(c => c.studentId?._id === data.studentId?._id)) return prev;
+        
+        setTimelineLogs((logs) => [
+          {
+            id: `log-${Date.now()}`,
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            message: `${data.studentId?.name} checked in via dynamic QR`,
+            type: 'success'
+          },
+          ...logs
+        ]);
+
         return [data, ...prev];
       });
-      showToast(`${data.studentId.name} checked in!`, 'success');
+      showToast(`${data.studentId?.name} checked in!`, 'success');
+    };
+
+    socket.on('student-checked-in', handleCheckIn);
+    socket.on('student:checkedin', handleCheckIn);
+
+    // Listen for security alerts from socket
+    socket.on('security:alert', (data: any) => {
+      const studentName = data.studentName || 'Unknown Student';
+      
+      setProxyAlerts((alerts) => [
+        {
+          id: data.logId || `alert-${Date.now()}`,
+          studentName1: studentName,
+          studentName2: 'System Watchdog Flag',
+          roll1: data.rollNumber || 'N/A',
+          roll2: 'Watchdog',
+          reason: data.message || 'Anomaly detected'
+        },
+        ...alerts
+      ]);
+
+      setTimelineLogs((logs) => [
+        {
+          id: `log-sec-${Date.now()}`,
+          time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          message: `Watchdog Alert: ${data.message}`,
+          type: 'warning'
+        },
+        ...logs
+      ]);
+      
+      showToast(`Security Warning: ${data.message}`, 'warning');
     });
 
     // Listen for OTP rotations from socket
@@ -147,7 +197,9 @@ export default function FacultyStartClassPage() {
     });
 
     return () => {
-      socket.off('student-checked-in');
+      socket.off('student-checked-in', handleCheckIn);
+      socket.off('student:checkedin', handleCheckIn);
+      socket.off('security:alert');
       socket.off('otp-rotated');
       socket.off('session-ended');
     };
@@ -171,6 +223,15 @@ export default function FacultyStartClassPage() {
       if (res.success && res.data) {
         setActiveSession(res.data);
         setCheckIns([]);
+        setTimelineLogs([
+          {
+            id: 'init',
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            message: `Live session initialized for ${res.data.courseId?.title || 'Class'}.`,
+            type: 'info'
+          }
+        ]);
+        setProxyAlerts([]);
         showToast('Attendance session initialized.', 'success');
       } else {
         showToast(res.message || 'Failed to start session.', 'error');
@@ -188,6 +249,15 @@ export default function FacultyStartClassPage() {
       const res = await api.post(`/attendance/session/${activeSession._id}/end`, {});
       if (res.success) {
         setActiveSession((prev: any) => prev ? { ...prev, status: 'completed' } : null);
+        setTimelineLogs((prev) => [
+          {
+            id: `log-end-${Date.now()}`,
+            time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+            message: 'Live session completed. Attendance finalized.',
+            type: 'info'
+          },
+          ...prev
+        ]);
         showToast('Attendance session completed successfully.', 'success');
       } else {
         showToast(res.message || 'Failed to complete session.', 'error');
@@ -206,6 +276,26 @@ export default function FacultyStartClassPage() {
     });
   };
 
+  if (pageLoading || coursesLoading) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="space-y-2">
+          <div className="h-6 w-48 bg-bg-secondary animate-pulse rounded-lg" />
+          <div className="h-4 w-64 bg-bg-secondary animate-pulse rounded-lg" />
+        </div>
+        <StatsSkeleton />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1">
+            <CardSkeleton />
+          </div>
+          <div className="lg:col-span-2">
+            <CardSkeleton />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Header */}
@@ -213,7 +303,7 @@ export default function FacultyStartClassPage() {
         <div>
           <h1 className="text-xl font-heading font-black text-text-primary tracking-tight flex items-center gap-2">
             <HiOutlineQrCode className="w-6 h-6 text-primary-light" />
-            Live Attendance Session
+            Live Session Check-In
           </h1>
           <p className="text-xs text-text-muted mt-0.5">
             {activeSession
@@ -248,10 +338,8 @@ export default function FacultyStartClassPage() {
       {!activeSession ? (
         /* Configuration Panel */
         <div className="max-w-xl mx-auto">
-          <Card title="Start New Session" subtitle="Configure class settings and trigger dynamic check-in QR">
-            {coursesLoading ? (
-              <div className="py-8 text-center text-xs text-text-muted">Loading courses...</div>
-            ) : courses.length === 0 ? (
+          <Card title="Start Live Session" subtitle="Configure class settings and trigger dynamic check-in QR">
+            {courses.length === 0 ? (
               <div className="py-8 text-center text-xs text-text-muted">
                 No courses assigned to your department. Set them up in Courses first.
               </div>
@@ -310,8 +398,8 @@ export default function FacultyStartClassPage() {
       ) : (
         /* Real-Time Session Dashboard */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* QR Code and Pin Display */}
-          <div className="lg:col-span-1 flex flex-col items-center">
+          {/* Column 1: QR Code and Pin Display */}
+          <div className="lg:col-span-1 flex flex-col items-center gap-4">
             <Card className="w-full text-center">
               {activeSession.status === 'active' ? (
                 <>
@@ -400,12 +488,12 @@ export default function FacultyStartClassPage() {
             </Card>
 
             {/* Session Settings Info */}
-            <Card className="w-full mt-4">
+            <Card className="w-full">
               <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider mb-2">Class Info</p>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs py-1">
                   <span className="text-text-muted">Subject:</span>
-                  <span className="font-semibold text-text-secondary">{activeSession.courseId?.title}</span>
+                  <span className="font-semibold text-text-secondary truncate max-w-[140px] block text-right">{activeSession.courseId?.title}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs py-1">
                   <span className="text-text-muted">Code:</span>
@@ -425,11 +513,11 @@ export default function FacultyStartClassPage() {
             </Card>
           </div>
 
-          {/* Live Roster Board */}
-          <div className="lg:col-span-2">
-            <Card noPadding>
+          {/* Column 2: Live Roster Board */}
+          <div className="lg:col-span-1">
+            <Card noPadding className="h-full flex flex-col">
               {/* Stats Header */}
-              <div className="px-5 pt-5 pb-3 border-b border-border/15">
+              <div className="px-5 pt-5 pb-3 border-b border-border/15 shrink-0">
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-sm font-bold text-text-primary">Live Roster Board</h3>
@@ -442,13 +530,13 @@ export default function FacultyStartClassPage() {
                       }`}
                     />
                     <span className="text-lg font-heading font-black text-text-primary">{checkIns.length}</span>
-                    <span className="text-xs text-text-muted">students present</span>
+                    <span className="text-[10px] text-text-muted">Present</span>
                   </div>
                 </div>
               </div>
 
               {/* Roster List */}
-              <div className="divide-y divide-border/15 max-h-[480px] overflow-y-auto">
+              <div className="divide-y divide-border/15 overflow-y-auto max-h-[460px] flex-1">
                 {checkIns.length === 0 ? (
                   <div className="py-16 text-center">
                     <div className="flex items-center justify-center gap-2 mb-3">
@@ -459,7 +547,7 @@ export default function FacultyStartClassPage() {
                     <p className="text-xs text-text-muted">Waiting for students to check in...</p>
                   </div>
                 ) : (
-                  checkIns.map((checkIn, i) => (
+                  checkIns.map((checkIn) => (
                     <div
                       key={checkIn.studentId._id}
                       className="px-5 py-3 flex items-center gap-3 hover:bg-bg-hover/30 transition-colors animate-fadeIn"
@@ -469,20 +557,19 @@ export default function FacultyStartClassPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-text-primary">{checkIn.studentId.name}</span>
+                          <span className="text-xs font-bold text-text-primary truncate">{checkIn.studentId.name}</span>
                           <Badge variant="success" size="xs">
-                            ✓ Checked In
+                            ✓ Verified
                           </Badge>
                         </div>
-                        <p className="text-[10px] text-text-muted">
+                        <p className="text-[9px] text-text-muted truncate">
                           Roll: {checkIn.studentId.rollNumber || 'N/A'} • {checkIn.studentId.email}
                         </p>
                       </div>
-                      <span className="text-[10px] text-text-dim font-semibold">
+                      <span className="text-[10px] text-text-dim font-semibold shrink-0">
                         {new Date(checkIn.verifiedAt).toLocaleTimeString('en-IN', {
                           hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
+                          minute: '2-digit'
                         })}
                       </span>
                     </div>
@@ -490,6 +577,27 @@ export default function FacultyStartClassPage() {
                 )}
               </div>
             </Card>
+          </div>
+
+          {/* Column 3: Anti-Proxy Security Watchdog & Security Live Timeline */}
+          <div className="lg:col-span-1 flex flex-col gap-4">
+            <ProxyAlertsPanel
+              presentCount={checkIns.length}
+              absentCount={Math.max(0, 48 - checkIns.length)}
+              flaggedCount={proxyAlerts.length}
+              alerts={proxyAlerts}
+              onAction={(alertId, action) => {
+                showToast(`Proxy check-in alert marked: ${action}`, action === 'flag' ? 'warning' : 'success');
+                if (action === 'flag') {
+                  setProxyAlerts((prev) => prev.filter((a) => a.id !== alertId));
+                  // Optionally decrease count
+                } else {
+                  setProxyAlerts((prev) => prev.filter((a) => a.id !== alertId));
+                }
+              }}
+            />
+
+            <SecurityTimeline logs={timelineLogs} />
           </div>
         </div>
       )}

@@ -17,6 +17,11 @@ import {
   HiOutlineArrowRight,
 } from 'react-icons/hi2';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/Toast';
+import { jsPDF } from 'jspdf';
+import { api } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 interface StudentSlot {
   id: string;
@@ -41,36 +46,6 @@ const timeSlots = [
   '04:30 - 05:20',
 ];
 
-const mockStudentTimetable: StudentSlot[] = [
-  // Monday
-  { id: '1', courseName: 'Data Structures', courseCode: 'CSC-201', type: 'Lecture', room: 'LH-301', faculty: 'Dr. Rajesh Kumar', time: '10:00 - 10:50', day: 'Monday', slotNumber: 2 },
-  { id: '2', courseName: 'Data Structures Lab', courseCode: 'CSC-201P', type: 'Practical', room: 'Lab-101', faculty: 'Dr. Rajesh Kumar', time: '11:00 - 11:50', day: 'Monday', slotNumber: 3 },
-  { id: '3', courseName: 'Operating Systems', courseCode: 'CSC-202', type: 'Lecture', room: 'LH-303', faculty: 'Dr. Amit Sharma', time: '01:30 - 02:20', day: 'Monday', slotNumber: 5 },
-  
-  // Tuesday
-  { id: '4', courseName: 'Data Structures', courseCode: 'CSC-201', type: 'Tutorial', room: 'LH-301', faculty: 'Dr. Rajesh Kumar', time: '03:30 - 04:20', day: 'Tuesday', slotNumber: 7 },
-  { id: '5', courseName: 'Operating Systems', courseCode: 'CSC-202', type: 'Lecture', room: 'LH-303', faculty: 'Dr. Amit Sharma', time: '01:30 - 02:20', day: 'Tuesday', slotNumber: 5 },
-  { id: '6', courseName: 'Discrete Mathematics', courseCode: 'MTH-201', type: 'Lecture', room: 'LH-202', faculty: 'Dr. Sunita Verma', time: '09:00 - 09:50', day: 'Tuesday', slotNumber: 1 },
-
-  // Wednesday
-  { id: '7', courseName: 'Data Structures', courseCode: 'CSC-201', type: 'Lecture', room: 'LH-301', faculty: 'Dr. Rajesh Kumar', time: '10:00 - 10:50', day: 'Wednesday', slotNumber: 2 },
-  { id: '8', courseName: 'Data Structures Lab', courseCode: 'CSC-201P', type: 'Practical', room: 'Lab-101', faculty: 'Dr. Rajesh Kumar', time: '11:00 - 11:50', day: 'Wednesday', slotNumber: 3 },
-  { id: '9', courseName: 'Discrete Mathematics', courseCode: 'MTH-201', type: 'Lecture', room: 'LH-202', faculty: 'Dr. Sunita Verma', time: '01:30 - 02:20', day: 'Wednesday', slotNumber: 5 },
-
-  // Thursday
-  { id: '10', courseName: 'Operating Systems Lab', courseCode: 'CSC-202P', type: 'Practical', room: 'Lab-103', faculty: 'Dr. Amit Sharma', time: '02:30 - 03:20', day: 'Thursday', slotNumber: 6 },
-  { id: '11', courseName: 'Data Structures', courseCode: 'CSC-201', type: 'Lecture', room: 'LH-301', faculty: 'Dr. Rajesh Kumar', time: '10:00 - 10:50', day: 'Thursday', slotNumber: 2 },
-
-  // Friday
-  { id: '12', courseName: 'Operating Systems Lab', courseCode: 'CSC-202P', type: 'Practical', room: 'Lab-103', faculty: 'Dr. Amit Sharma', time: '09:00 - 09:50', day: 'Friday', slotNumber: 1 },
-  { id: '13', courseName: 'Operating Systems Lab', courseCode: 'CSC-202P', type: 'Practical', room: 'Lab-103', faculty: 'Dr. Amit Sharma', time: '10:00 - 10:50', day: 'Friday', slotNumber: 2 },
-  { id: '14', courseName: 'Operating Systems', courseCode: 'CSC-202', type: 'Lecture', room: 'LH-303', faculty: 'Dr. Amit Sharma', time: '01:30 - 02:20', day: 'Friday', slotNumber: 5 },
-  
-  // Saturday
-  { id: '15', courseName: 'Discrete Mathematics', courseCode: 'MTH-201', type: 'Lecture', room: 'LH-202', faculty: 'Dr. Sunita Verma', time: '09:00 - 09:50', day: 'Saturday', slotNumber: 1 },
-  { id: '16', courseName: 'Data Structures', courseCode: 'CSC-201', type: 'Lecture', room: 'LH-301', faculty: 'Dr. Rajesh Kumar', time: '10:00 - 10:50', day: 'Saturday', slotNumber: 2 },
-];
-
 const days: ('Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday')[] = [
   'Monday',
   'Tuesday',
@@ -93,12 +68,24 @@ const cellColorClasses = {
 };
 
 export default function StudentTimetable() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedSlot, setSelectedSlot] = useState<StudentSlot | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
+  // Fetch timetable from API
+  const { data: timetableData = [], isLoading } = useQuery<StudentSlot[]>({
+    queryKey: ['studentTimetable'],
+    queryFn: async () => {
+      const res = await api.get('/timetable/student');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch timetable');
+      return res.data || [];
+    }
+  });
+
   const getSlot = (day: string, slotNumber: number) => {
-    return mockStudentTimetable.find(
+    return timetableData.find(
       (s) => s.day === day && s.slotNumber === slotNumber
     );
   };
@@ -107,6 +94,94 @@ export default function StudentTimetable() {
     setSelectedSlot(slot);
     setIsDetailModalOpen(true);
   };
+
+  const exportTimetablePDF = () => {
+    if (timetableData.length === 0) {
+      showToast('No timetable data available to export.', 'warning');
+      return;
+    }
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(30, 41, 59);
+    doc.text(user?.collegeName || 'SmartEdu Campus', 105, 25, { align: 'center' });
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Student Semester Timetable', 105, 32, { align: 'center' });
+    
+    doc.setDrawColor(203, 213, 225);
+    doc.line(15, 38, 195, 38);
+    
+    // Student Info
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Name: ${user?.name || 'Student'}`, 15, 47);
+    doc.text(`Roll Number: ${user?.studentData?.rollNumber || 'N/A'}`, 195, 47, { align: 'right' });
+    doc.text(`Department: ${user?.studentData?.department?.name || 'N/A'}`, 15, 54);
+    doc.text(`Semester: Semester ${user?.studentData?.semester || 'N/A'}`, 195, 54, { align: 'right' });
+    
+    doc.line(15, 60, 195, 60);
+    
+    // Table Headers
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Day', 15, 68);
+    doc.text('Time Slot', 40, 68);
+    doc.text('Subject Details', 85, 68);
+    doc.text('Classroom', 160, 68);
+    doc.text('Type', 182, 68);
+    
+    doc.line(15, 73, 195, 73);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    
+    let y = 80;
+    timetableData.forEach((slot) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 25;
+      }
+      doc.text(slot.day, 15, y);
+      doc.text(slot.time, 40, y);
+      doc.text(`${slot.courseName} (${slot.courseCode}) - ${slot.faculty}`, 85, y);
+      doc.text(slot.room, 160, y);
+      doc.text(slot.type, 182, y);
+      y += 8;
+    });
+    
+    doc.line(15, y + 2, 195, y + 2);
+    
+    y += 10;
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(99, 102, 241);
+    doc.text('GENERATED SECURELY VIA SMARTEDU PORTAL', 105, y, { align: 'center' });
+    
+    doc.save('Student_Timetable.pdf');
+    showToast('Weekly timetable exported as PDF successfully!', 'success');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="space-y-2">
+          <div className="h-6 w-48 bg-bg-secondary animate-pulse rounded-lg" />
+          <div className="h-4 w-64 bg-bg-secondary animate-pulse rounded-lg" />
+        </div>
+        <div className="h-16 bg-bg-secondary animate-pulse rounded-2xl" />
+        <div className="h-96 bg-bg-secondary animate-pulse rounded-2xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -119,7 +194,7 @@ export default function StudentTimetable() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />}>
+          <Button variant="outline" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />} onClick={exportTimetablePDF}>
             Export PDF
           </Button>
           <div className="flex bg-bg-elevated border border-border/40 p-0.5 rounded-xl">
@@ -149,135 +224,151 @@ export default function StudentTimetable() {
         </div>
       </div>
 
-      {/* Free Period Productivity Suggestion Card */}
-      <div className="gradient-primary-glow border border-primary/20 rounded-2xl p-5 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
-        <div className="space-y-1.5 z-10 max-w-2xl">
-          <div className="flex items-center gap-2">
-            <Badge variant="primary" size="xs" icon={<HiOutlineSparkles className="w-3 h-3 text-primary-light" />}>
-              AI Recommendation
-            </Badge>
-            <span className="text-[10px] text-primary-light font-bold">FREE PERIOD COMING UP</span>
+      {/* Empty State */}
+      {timetableData.length === 0 ? (
+        <Card className="text-center py-16">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <HiOutlineCalendarDays className="w-8 h-8 text-primary-light" />
+            </div>
+            <h3 className="text-sm font-bold text-text-primary">No Timetable Available</h3>
+            <p className="text-xs text-text-muted max-w-xs">
+              Your semester timetable has not been generated yet. Please check back once the administration publishes the schedule.
+            </p>
           </div>
-          <h3 className="text-sm font-heading font-bold text-text-primary">
-            You have a 1-hour break between 11:50 AM and 01:30 PM.
-          </h3>
-          <p className="text-xs text-text-secondary leading-relaxed">
-            Your attendance in <strong className="text-text-primary">Data Structures Lab</strong> is currently at 83%. We recommend studying the <strong className="text-text-primary">Binary Search Trees</strong> module in the Learn Section during your break to boost performance.
-          </p>
-        </div>
-        <Link href="/student/learn">
-          <Button variant="primary" size="sm" iconRight={<HiOutlineArrowRight className="w-3.5 h-3.5" />}>
-            Go to Learn
-          </Button>
-        </Link>
-        {/* Glow decoration */}
-        <div className="absolute right-0 top-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
-      </div>
-
-      {/* Main Timetable View */}
-      {viewMode === 'grid' ? (
-        <div className="overflow-x-auto rounded-2xl border border-border/30 shadow-xl bg-bg-secondary">
-          <table className="w-full min-w-[900px] border-collapse">
-            <thead>
-              <tr className="border-b border-border/35 bg-bg-elevated/40">
-                <th className="py-3.5 px-4 text-left text-xs font-bold text-text-primary w-28 border-r border-border/15">
-                  Day / Slot
-                </th>
-                {timeSlots.map((time, idx) => (
-                  <th key={idx} className="py-3 px-2 text-center text-xs font-bold text-text-primary border-r border-border/15 last:border-r-0">
-                    <div className="text-[10px] text-text-muted font-normal">Slot {idx + 1}</div>
-                    <div className="text-[9px] text-text-dim font-mono">{time}</div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((day) => (
-                <tr key={day} className="border-b border-border/20 last:border-b-0 hover:bg-bg-hover/5 transition-colors">
-                  <td className="py-4 px-4 text-xs font-bold text-text-primary bg-bg-elevated/10 border-r border-border/15">
-                    {day}
-                  </td>
-                  {Array.from({ length: 8 }).map((_, sIdx) => {
-                    const slotNum = sIdx + 1;
-                    const slot = getSlot(day, slotNum);
-                    
-                    return (
-                      <td key={sIdx} className="p-2 border-r border-border/15 last:border-r-0 text-center align-middle h-24 w-[12%]">
-                        {slot ? (
-                          <div
-                            onClick={() => handleSlotClick(slot)}
-                            className={`p-2 rounded-xl border text-left h-full flex flex-col justify-between cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${cellColorClasses[slot.type]}`}
-                          >
-                            <div>
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10px] font-black tracking-tight">{slot.courseCode}</span>
-                                <Badge variant={typeBadgeVariants[slot.type]} size="xs">{slot.type.charAt(0)}</Badge>
-                              </div>
-                              <p className="text-[9px] font-medium text-text-primary leading-tight mt-1 truncate">{slot.courseName}</p>
-                            </div>
-                            <div className="flex items-center justify-between text-[8px] text-text-muted mt-1.5">
-                              <span className="flex items-center gap-0.5 truncate max-w-[55%]">
-                                <HiOutlineBuildingOffice2 className="w-2.5 h-2.5 shrink-0" />
-                                {slot.room}
-                              </span>
-                              <span className="flex items-center gap-0.5 truncate max-w-[45%]">
-                                <HiOutlineUser className="w-2.5 h-2.5 shrink-0" />
-                                {slot.faculty.split(' ').pop()}
-                              </span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-[9px] text-text-dim/40 italic font-mono">-</div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        </Card>
       ) : (
-        /* List View */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockStudentTimetable.map((slot) => (
-            <Card
-              key={slot.id}
-              className="hover:scale-[1.01] transition-transform cursor-pointer border-l-4"
-              style={{ borderLeftColor: slot.type === 'Lecture' ? '#6366f1' : slot.type === 'Practical' ? '#10b981' : '#f59e0b' }}
-              onClick={() => handleSlotClick(slot)}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-text-primary">{slot.courseCode}</span>
-                    <Badge variant={typeBadgeVariants[slot.type]} size="xs">{slot.type}</Badge>
-                  </div>
-                  <h3 className="text-sm font-bold text-text-primary mt-1">{slot.courseName}</h3>
-                </div>
+        <>
+          {/* Free Period Productivity Suggestion Card */}
+          <div className="gradient-primary-glow border border-primary/20 rounded-2xl p-5 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-1.5 z-10 max-w-2xl">
+              <div className="flex items-center gap-2">
+                <Badge variant="primary" size="xs" icon={<HiOutlineSparkles className="w-3 h-3 text-primary-light" />}>
+                  AI Recommendation
+                </Badge>
               </div>
+              <h3 className="text-sm font-heading font-bold text-text-primary">
+                Check your free periods and study recommendations in the Learning Hub.
+              </h3>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                Explore study materials and practice quizzes for your enrolled courses during breaks.
+              </p>
+            </div>
+            <Link href="/student/learn">
+              <Button variant="primary" size="sm" iconRight={<HiOutlineArrowRight className="w-3.5 h-3.5" />}>
+                Go to Learn
+              </Button>
+            </Link>
+            {/* Glow decoration */}
+            <div className="absolute right-0 top-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
+          </div>
 
-              <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/15 text-[10px]">
-                <div className="flex items-center gap-2 text-text-muted">
-                  <HiOutlineCalendarDays className="w-4 h-4 text-text-dim" />
-                  <span>{slot.day}</span>
-                </div>
-                <div className="flex items-center gap-2 text-text-muted">
-                  <HiOutlineClock className="w-4 h-4 text-text-dim" />
-                  <span>{slot.time}</span>
-                </div>
-                <div className="flex items-center gap-2 text-text-muted">
-                  <HiOutlineBuildingOffice2 className="w-4 h-4 text-text-dim" />
-                  <span>{slot.room}</span>
-                </div>
-                <div className="flex items-center gap-2 text-text-muted">
-                  <HiOutlineUser className="w-4 h-4 text-text-dim" />
-                  <span>{slot.faculty}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+          {/* Main Timetable View */}
+          {viewMode === 'grid' ? (
+            <div className="overflow-x-auto rounded-2xl border border-border/30 shadow-xl bg-bg-secondary">
+              <table className="w-full min-w-[900px] border-collapse">
+                <thead>
+                  <tr className="border-b border-border/35 bg-bg-elevated/40">
+                    <th className="py-3.5 px-4 text-left text-xs font-bold text-text-primary w-28 border-r border-border/15">
+                      Day / Slot
+                    </th>
+                    {timeSlots.map((time, idx) => (
+                      <th key={idx} className="py-3 px-2 text-center text-xs font-bold text-text-primary border-r border-border/15 last:border-r-0">
+                        <div className="text-[10px] text-text-muted font-normal">Slot {idx + 1}</div>
+                        <div className="text-[9px] text-text-dim font-mono">{time}</div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {days.map((day) => (
+                    <tr key={day} className="border-b border-border/20 last:border-b-0 hover:bg-bg-hover/5 transition-colors">
+                      <td className="py-4 px-4 text-xs font-bold text-text-primary bg-bg-elevated/10 border-r border-border/15">
+                        {day}
+                      </td>
+                      {Array.from({ length: 8 }).map((_, sIdx) => {
+                        const slotNum = sIdx + 1;
+                        const slot = getSlot(day, slotNum);
+                        
+                        return (
+                          <td key={sIdx} className="p-2 border-r border-border/15 last:border-r-0 text-center align-middle h-24 w-[12%]">
+                            {slot ? (
+                              <div
+                                onClick={() => handleSlotClick(slot)}
+                                className={`p-2 rounded-xl border text-left h-full flex flex-col justify-between cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-md ${cellColorClasses[slot.type]}`}
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="text-[10px] font-black tracking-tight">{slot.courseCode}</span>
+                                    <Badge variant={typeBadgeVariants[slot.type]} size="xs">{slot.type.charAt(0)}</Badge>
+                                  </div>
+                                  <p className="text-[9px] font-medium text-text-primary leading-tight mt-1 truncate">{slot.courseName}</p>
+                                </div>
+                                <div className="flex items-center justify-between text-[8px] text-text-muted mt-1.5">
+                                  <span className="flex items-center gap-0.5 truncate max-w-[55%]">
+                                    <HiOutlineBuildingOffice2 className="w-2.5 h-2.5 shrink-0" />
+                                    {slot.room}
+                                  </span>
+                                  <span className="flex items-center gap-0.5 truncate max-w-[45%]">
+                                    <HiOutlineUser className="w-2.5 h-2.5 shrink-0" />
+                                    {slot.faculty.split(' ').pop()}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-text-dim/40 italic font-mono">-</div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* List View */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {timetableData.map((slot) => (
+                <Card
+                  key={slot.id}
+                  className="hover:scale-[1.01] transition-transform cursor-pointer border-l-4"
+                  style={{ borderLeftColor: slot.type === 'Lecture' ? '#6366f1' : slot.type === 'Practical' ? '#10b981' : '#f59e0b' }}
+                  onClick={() => handleSlotClick(slot)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-text-primary">{slot.courseCode}</span>
+                        <Badge variant={typeBadgeVariants[slot.type]} size="xs">{slot.type}</Badge>
+                      </div>
+                      <h3 className="text-sm font-bold text-text-primary mt-1">{slot.courseName}</h3>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-border/15 text-[10px]">
+                    <div className="flex items-center gap-2 text-text-muted">
+                      <HiOutlineCalendarDays className="w-4 h-4 text-text-dim" />
+                      <span>{slot.day}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-text-muted">
+                      <HiOutlineClock className="w-4 h-4 text-text-dim" />
+                      <span>{slot.time}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-text-muted">
+                      <HiOutlineBuildingOffice2 className="w-4 h-4 text-text-dim" />
+                      <span>{slot.room}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-text-muted">
+                      <HiOutlineUser className="w-4 h-4 text-text-dim" />
+                      <span>{slot.faculty}</span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {/* Class Details Modal */}

@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import { Inter, Outfit } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { QueryProvider } from '@/contexts/QueryProvider';
 import { ToastProvider } from '@/components/ui/Toast';
+import { AIChatbot } from '@/components/ui/AIChatbot';
+import { PublicLayoutWrapper } from '@/components/ui/PublicLayoutWrapper';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -15,7 +18,7 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: 'USCDLE | Unified Smart Campus & Digital Learning Ecosystem',
+  title: 'SmartEdu Campus | Unified Smart Campus & Digital Learning Ecosystem',
   description: 'A comprehensive campus automation solution bridging administrative overheads and rural education gaps.',
   manifest: '/manifest.json'
 };
@@ -29,9 +32,14 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${outfit.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-bg-primary text-text-primary">
         <ToastProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <PublicLayoutWrapper>
+                {children}
+              </PublicLayoutWrapper>
+              <AIChatbot />
+            </AuthProvider>
+          </QueryProvider>
         </ToastProvider>
       </body>
     </html>

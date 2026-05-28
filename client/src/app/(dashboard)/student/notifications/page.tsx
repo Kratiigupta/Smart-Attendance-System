@@ -16,6 +16,10 @@ import {
 } from 'react-icons/hi2';
 import Link from 'next/link';
 
+import { api } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { useToast } from '@/components/ui/Toast';
+
 interface NotificationItem {
   id: string;
   title: string;
@@ -28,71 +32,61 @@ interface NotificationItem {
   actionText?: string;
 }
 
-const initialNotifications: NotificationItem[] = [
-  {
-    id: 'n1',
-    title: 'Attendance Shortage Alert',
-    message: 'Your attendance in Data Structures Lab (CSC-201P) has dropped to 71%, which is below the minimum required 75% limit.',
-    category: 'Attendance',
-    timestamp: '2 hours ago',
-    read: false,
-    priority: 'high',
-    actionLink: '/student/attendance',
-    actionText: 'View My Attendance',
-  },
-  {
-    id: 'n2',
-    title: 'Outstanding Semester Fees',
-    message: 'Hostel charges and Exam fees for Semester 3 are due. Please complete payment before the 15th June deadline to avoid late fees.',
-    category: 'Fees',
-    timestamp: '1 day ago',
-    read: false,
-    priority: 'medium',
-    actionLink: '/student/fees',
-    actionText: 'Pay Outstanding Fees',
-  },
-  {
-    id: 'n3',
-    title: 'Timetable Adjustment',
-    message: 'Data Structures Lecture (CSC-201) on Wednesday has been moved from Slot 4 to Slot 2 (10:00 AM - 10:50 AM).',
-    category: 'Timetable',
-    timestamp: '2 days ago',
-    read: true,
-    priority: 'medium',
-    actionLink: '/student/timetable',
-    actionText: 'View Schedule',
-  },
-  {
-    id: 'n4',
-    title: 'Assignment Graded',
-    message: 'Your practical assignment "BST Implementation" in Data Structures has been graded. Score: 9.5/10.',
-    category: 'Academic',
-    timestamp: '3 days ago',
-    read: true,
-    priority: 'low',
-  },
-];
-
 export default function StudentNotifications() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
+  const { showToast } = useToast();
   const [filter, setFilter] = useState<string>('All');
+
+  // Query notifications from database
+  const { data: notifications = [], isLoading, refetch } = useQuery<NotificationItem[]>({
+    queryKey: ['notificationsList'],
+    queryFn: async () => {
+      const res = await api.get('/notifications');
+      if (!res.success) throw new Error(res.message || 'Failed to load notifications');
+      return res.data || [];
+    }
+  });
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const markAllAsRead = () => {
-    setNotifications(
-      notifications.map((n) => ({ ...n, read: true }))
-    );
+  const markAllAsRead = async () => {
+    try {
+      const res = await api.put('/notifications/mark-all', {});
+      if (res.success) {
+        showToast('All notifications marked as read.', 'success');
+        refetch();
+      } else {
+        showToast(res.message || 'Failed to update notifications.', 'error');
+      }
+    } catch (err) {
+      showToast('Network error updating notifications.', 'error');
+    }
   };
 
-  const handleMarkAsRead = (id: string) => {
-    setNotifications(
-      notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      const res = await api.put(`/notifications/${id}/read`, {});
+      if (res.success) {
+        refetch();
+      } else {
+        showToast(res.message || 'Failed to update notification.', 'error');
+      }
+    } catch (err) {
+      showToast('Network error updating notification.', 'error');
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setNotifications(notifications.filter((n) => n.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await api.delete(`/notifications/${id}`);
+      if (res.success) {
+        showToast('Notification deleted successfully.', 'success');
+        refetch();
+      } else {
+        showToast(res.message || 'Failed to delete notification.', 'error');
+      }
+    } catch (err) {
+      showToast('Network error deleting notification.', 'error');
+    }
   };
 
   const filteredNotifications = notifications.filter(
@@ -124,6 +118,19 @@ export default function StudentNotifications() {
         return <Badge variant="default" size="xs">Update</Badge>;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="h-8 w-48 bg-bg-secondary animate-pulse rounded-lg" />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-24 bg-bg-secondary animate-pulse rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">

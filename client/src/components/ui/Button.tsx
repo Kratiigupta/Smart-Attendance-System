@@ -42,7 +42,7 @@ export function Button({
   return (
     <button
       className={`
-        inline-flex items-center justify-center font-semibold
+        inline-flex items-center justify-center font-semibold whitespace-nowrap
         transition-all duration-200 cursor-pointer select-none
         disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none
         active:scale-[0.97]

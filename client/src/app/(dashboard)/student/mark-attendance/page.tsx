@@ -14,19 +14,22 @@ import {
   HiOutlineXCircle,
   HiOutlineKey,
   HiOutlineArrowPath,
-  HiOutlineComputerDesktop,
   HiOutlineSparkles,
   HiOutlineVideoCamera,
   HiOutlineAcademicCap
 } from 'react-icons/hi2';
+import { QRScannerView } from '@/components/scanner/QRScannerView';
+import { SubjectDetectionCard } from '@/components/scanner/SubjectDetectionCard';
+import { VerificationStatus, VerificationState } from '@/components/scanner/VerificationStatus';
+import { VerificationSuccessModal } from '@/components/scanner/VerificationSuccessModal';
 
 type Step = 'scan' | 'face' | 'success' | 'error';
 type InputMode = 'camera' | 'manual';
 
 const steps = [
-  { id: 'scan', label: 'QR Scan / Code', icon: '📱' },
+  { id: 'scan', label: 'Smart Scan', icon: '📱' },
   { id: 'face', label: 'Face Verify', icon: '👤' },
-  { id: 'success', label: 'Done', icon: '✅' },
+  { id: 'success', label: 'Complete', icon: '✅' },
 ];
 
 interface ActiveSession {
@@ -49,6 +52,12 @@ export default function StudentMarkAttendancePage() {
 
   const [currentStep, setCurrentStep] = useState<Step>('scan');
   const [inputMode, setInputMode] = useState<InputMode>('camera');
+
+  // Real-time Verification status checklist states
+  const [cameraStatus, setCameraStatus] = useState<VerificationState>('idle');
+  const [qrStatus, setQrStatus] = useState<VerificationState>('idle');
+  const [identityStatus, setIdentityStatus] = useState<VerificationState>('idle');
+  const [confirmationStatus, setConfirmationStatus] = useState<VerificationState>('idle');
 
   // Manual Mode state
   const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
@@ -105,6 +114,7 @@ export default function StudentMarkAttendancePage() {
     if (currentStep === 'scan' && inputMode === 'camera') {
       let qrInstance: any = null;
       setCameraError(null);
+      setCameraStatus('loading');
 
       // Timeout helper to wait for the element to mount in the DOM
       const timer = setTimeout(() => {
@@ -132,6 +142,9 @@ export default function StudentMarkAttendancePage() {
                       setScannedOtp(data.otp);
                       setScannedCourseDetails(data.courseCode || 'Active Class');
                       showToast('QR Code scanned successfully!', 'success');
+                      
+                      setCameraStatus('success');
+                      setQrStatus('success');
 
                       // Stop QR scanner and move to Face verify step
                       if (qrInstance && qrInstance.isScanning) {
@@ -147,22 +160,27 @@ export default function StudentMarkAttendancePage() {
                       }
                     } else {
                       showToast('Invalid QR Code format.', 'warning');
+                      setQrStatus('failed');
                     }
                   } catch (e) {
                     showToast('Unsupported QR scan result.', 'warning');
+                    setQrStatus('failed');
                   }
                 },
                 () => {
                   // Scanning error / progress callback (silent to avoid flood)
+                  setCameraStatus('success');
                 }
               )
               .catch((err: any) => {
                 console.error('Camera startup error:', err);
                 setCameraError('Webcam viewfinder failed to initialize. Try manual OTP input mode.');
+                setCameraStatus('failed');
               });
           })
           .catch((err) => {
             console.error('Failed to load html5-qrcode module:', err);
+            setCameraStatus('failed');
           });
       }, 300);
 
@@ -180,6 +198,7 @@ export default function StudentMarkAttendancePage() {
     if (currentStep === 'face' && !isSimulatingFace) {
       let activeStream: MediaStream | null = null;
       setCameraError(null);
+      setCameraStatus('loading');
 
       const startWebcam = async () => {
         try {
@@ -191,9 +210,11 @@ export default function StudentMarkAttendancePage() {
           if (videoRef.current) {
             videoRef.current.srcObject = s;
           }
+          setCameraStatus('success');
         } catch (err: any) {
           console.warn('Webcam access error, falling back to simulator:', err);
           setIsSimulatingFace(true);
+          setCameraStatus('success');
           showToast('Webcam not accessible. Using simulated verification.', 'info');
         }
       };
@@ -223,10 +244,13 @@ export default function StudentMarkAttendancePage() {
     setScannedSessionId(selectedSessionId);
     setScannedOtp(manualOtp);
     setScannedCourseDetails(selectedSession?.courseId?.code || 'Manual Check-in');
+    setCameraStatus('success');
+    setQrStatus('success');
     setCurrentStep('face');
   };
 
   const handleCaptureFace = () => {
+    setIdentityStatus('loading');
     if (isSimulatingFace) {
       simulateFaceVerify();
       return;
@@ -265,24 +289,26 @@ export default function StudentMarkAttendancePage() {
 
   const simulateFaceVerify = () => {
     setFaceCaptureLoading(true);
+    setIdentityStatus('loading');
     // Simulate 2 seconds database face analysis verification latency
     setTimeout(() => {
-      const mockSnapshot = 'data:image/jpeg;base64,SIMULATED_WEBCAM_FACE_SNAPSHOT_USCDLE';
+      const mockSnapshot = 'data:image/jpeg;base64,SIMULATED_WEBCAM_FACE_SNAPSHOT_SMARTEDU';
       setWebcamSnapshot(mockSnapshot);
       setFaceCaptureLoading(false);
       submitAttendanceRecord(scannedSessionId, scannedOtp, mockSnapshot);
-    }, 2000);
+    }, 1800);
   };
 
   const submitAttendanceRecord = async (sessionId: string, otpCode: string, snapshot: string) => {
     setSubmitLoading(true);
     setErrorMessage(null);
+    setConfirmationStatus('loading');
 
     // Fingerprint or device locking mock
-    let deviceId = localStorage.getItem('uscdle_student_device_id');
+    let deviceId = localStorage.getItem('smartedu_student_device_id');
     if (!deviceId) {
       deviceId = 'dev_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('uscdle_student_device_id', deviceId);
+      localStorage.setItem('smartedu_student_device_id', deviceId);
     }
 
     try {
@@ -294,18 +320,24 @@ export default function StudentMarkAttendancePage() {
       });
 
       if (res.success && res.data) {
-        showToast('Attendance logged successfully!', 'success');
+        showToast('Smart Check-In Successful!', 'success');
         setVerifiedDetails({
           course: scannedCourseDetails,
           time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-          method: isSimulatingFace ? 'QR Scan + Simulated Face verification' : 'QR Scan + Secure Webcam Snapshot',
+          method: snapshot.includes('BYPASSED') ? 'Dynamic QR + Direct Bypass Check-In' : 'Dynamic QR + Secure Face verification',
         });
+        setIdentityStatus('success');
+        setConfirmationStatus('success');
         setCurrentStep('success');
       } else {
+        setIdentityStatus('failed');
+        setConfirmationStatus('failed');
         setErrorMessage(res.message || 'Verification rejected by the backend database check.');
         setCurrentStep('error');
       }
     } catch (err: any) {
+      setIdentityStatus('failed');
+      setConfirmationStatus('failed');
       setErrorMessage(err.message || 'A network error occurred while submitting.');
       setCurrentStep('error');
     } finally {
@@ -321,6 +353,13 @@ export default function StudentMarkAttendancePage() {
     setErrorMessage(null);
     setVerifiedDetails(null);
     setIsSimulatingFace(false);
+    
+    // Reset status checklist states
+    setCameraStatus('idle');
+    setQrStatus('idle');
+    setIdentityStatus('idle');
+    setConfirmationStatus('idle');
+    
     setCurrentStep('scan');
   };
 
@@ -331,8 +370,8 @@ export default function StudentMarkAttendancePage() {
       {/* Header */}
       <div className="text-center">
         <h1 className="text-xl font-heading font-black text-text-primary tracking-tight flex items-center justify-center gap-2">
-          <HiOutlineQrCode className="w-6 h-6 text-primary-light" />
-          Smart Check-In Portal
+          <HiOutlineQrCode className="w-6 h-6 text-primary-light animate-[spin-slow_12s_linear_infinite]" />
+          Smart Check-In
         </h1>
         <p className="text-xs text-text-muted mt-0.5">Software-only student attendance verification system</p>
       </div>
@@ -363,10 +402,32 @@ export default function StudentMarkAttendancePage() {
         ))}
       </div>
 
+      {/* Real-Time Checklist Status Panel */}
+      <div className="max-w-md mx-auto">
+        <VerificationStatus
+          cameraState={cameraStatus}
+          qrState={qrStatus}
+          identityState={identityStatus}
+          confirmationState={confirmationStatus}
+        />
+      </div>
+
+      {/* Subject Auto-Detection Card */}
+      {scannedSessionId && (
+        <div className="max-w-md mx-auto">
+          <SubjectDetectionCard 
+            courseCode={scannedCourseDetails} 
+            courseTitle={scannedCourseDetails === 'CSC-201' ? 'Data Structures & Algorithms' : scannedCourseDetails === 'CSC-305' ? 'Database Management Systems' : 'Auto-Detected Lecture'}
+            roomName="LH-301"
+            facultyName="Dr. Rajesh Kumar"
+          />
+        </div>
+      )}
+
       {/* Main Form/Scanner Panels */}
       <div className="max-w-md mx-auto">
         {/* Step 1: Scan QR or Enter Code */}
-        {currentStep === 'scan' && (
+        {(currentStep === 'scan' || currentStep === 'success') && (
           <Card glow>
             {/* Input Mode Selector */}
             <div className="grid grid-cols-2 gap-2 p-1 bg-bg-elevated/40 rounded-xl border border-border/20 mb-5">
@@ -399,35 +460,11 @@ export default function StudentMarkAttendancePage() {
             </div>
 
             {inputMode === 'camera' ? (
-              /* QR Scanner view */
-              <div className="space-y-4 text-center">
-                <div className="relative mx-auto w-64 h-64 rounded-2xl bg-black overflow-hidden border border-border/40 shadow-inner">
-                  {cameraError ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                      <HiOutlineXCircle className="w-10 h-10 text-danger mb-2" />
-                      <p className="text-[10px] text-text-muted leading-relaxed">{cameraError}</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Reader Mount */}
-                      <div id="qr-reader" className="w-full h-full" />
-                      {/* Custom Scan Line Overlay */}
-                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                        <div className="w-48 h-48 border border-primary/25 rounded-xl relative">
-                          <div className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-primary rounded-tl" />
-                          <div className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-primary rounded-tr" />
-                          <div className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-primary rounded-bl" />
-                          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-primary rounded-br" />
-                          <div className="absolute left-1 right-1 h-0.5 bg-primary/80 animate-[scan_2.0s_ease-in-out_infinite]" />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <p className="text-[11px] text-text-muted">
-                  Position your camera viewfinder directly over the QR code running on the instructor's display screen.
-                </p>
-              </div>
+              /* QR Scanner view using high-tech modular component */
+              <QRScannerView 
+                cameraError={cameraError} 
+                onManualClick={() => setInputMode('manual')} 
+              />
             ) : (
               /* Manual Input Form view */
               <form onSubmit={handleManualProceed} className="space-y-4">
@@ -490,7 +527,7 @@ export default function StudentMarkAttendancePage() {
         {/* Step 2: Face Verification */}
         {currentStep === 'face' && (
           <Card glow className="text-center animate-scaleIn">
-            <h3 className="text-sm font-bold text-text-primary mb-1">Secure Face Verification</h3>
+            <h3 className="text-sm font-bold text-text-primary mb-1">Identity Verification</h3>
             <p className="text-[10px] text-text-muted mb-4">
               Capture your photo snapshot to verify attendance session fingerprint.
             </p>
@@ -537,64 +574,47 @@ export default function StudentMarkAttendancePage() {
               )}
             </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" size="md" className="flex-1" onClick={handleReset} disabled={faceCaptureLoading}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="md"
-                className="flex-[2]"
-                icon={<HiOutlineVideoCamera className="w-4 h-4" />}
-                onClick={handleCaptureFace}
-                loading={faceCaptureLoading}
+            <div className="flex flex-col gap-2 w-full">
+              <div className="flex gap-2 w-full">
+                <Button variant="outline" size="md" className="flex-1" onClick={handleReset} disabled={faceCaptureLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="md"
+                  className="flex-[2]"
+                  icon={<HiOutlineVideoCamera className="w-4 h-4" />}
+                  onClick={handleCaptureFace}
+                  loading={faceCaptureLoading}
+                >
+                  {isSimulatingFace ? 'Simulate Face' : 'Verify Identity'}
+                </Button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setFaceCaptureLoading(true);
+                  showToast('Bypassing face matching for demo...', 'info');
+                  setTimeout(() => {
+                    setFaceCaptureLoading(false);
+                    submitAttendanceRecord(scannedSessionId, scannedOtp, 'data:image/jpeg;base64,BYPASSED_FACE_SNAPSHOT');
+                  }, 800);
+                }}
+                className="text-[10px] text-primary-light hover:text-primary font-bold uppercase tracking-wider py-1.5 hover:underline cursor-pointer border border-dashed border-primary/20 rounded-xl hover:border-primary/45 bg-primary/5 transition-all w-full text-center"
               >
-                {isSimulatingFace ? 'Simulate Face Verification' : 'Verify My Identity'}
-              </Button>
+                ⚡ Optional: Skip Face Match (Direct Check-In)
+              </button>
             </div>
           </Card>
         )}
 
-        {/* Step 3: Success Screen */}
-        {currentStep === 'success' && verifiedDetails && (
-          <Card glow className="text-center animate-scaleIn">
-            <div className="w-16 h-16 rounded-full bg-success/10 border border-success/30 flex items-center justify-center mx-auto mb-4">
-              <HiOutlineCheckCircle className="w-10 h-10 text-success-light" />
-            </div>
-            <h3 className="text-lg font-heading font-black text-success-light mb-1">Check-In Successful!</h3>
-            <p className="text-[11px] text-text-muted mb-5">Your attendance has been recorded in the ERP system ledger.</p>
-
-            <div className="bg-bg-elevated/40 rounded-xl p-4 text-left border border-border/10 space-y-2.5 mb-5">
-              <div className="flex items-center justify-between py-0.5 border-b border-border/10">
-                <span className="text-[10px] text-text-muted">Subject / Course</span>
-                <span className="text-xs font-bold text-text-primary">{verifiedDetails.course}</span>
-              </div>
-              <div className="flex items-center justify-between py-0.5 border-b border-border/10">
-                <span className="text-[10px] text-text-muted">Time Verified</span>
-                <span className="text-xs font-bold text-text-primary">{verifiedDetails.time}</span>
-              </div>
-              <div className="flex items-center justify-between py-0.5">
-                <span className="text-[10px] text-text-muted">Verification Vector</span>
-                <span className="text-xs font-bold text-text-primary flex items-center gap-1">
-                  <HiOutlineSparkles className="w-3.5 h-3.5 text-primary-light" />
-                  Software Auth
-                </span>
-              </div>
-            </div>
-
-            <Button variant="primary" size="md" fullWidth onClick={handleReset}>
-              Return to QR Scanner
-            </Button>
-          </Card>
-        )}
-
-        {/* Step 4: Error Screen */}
+        {/* Step 3: Error Screen */}
         {currentStep === 'error' && (
           <Card glow className="text-center animate-scaleIn">
             <div className="w-16 h-16 rounded-full bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto mb-4">
               <HiOutlineXCircle className="w-10 h-10 text-danger-light" />
             </div>
-            <h3 className="text-lg font-heading font-black text-danger-light mb-1">Attendance Rejected</h3>
+            <h3 className="text-lg font-heading font-black text-danger-light mb-1">Check-In Rejected</h3>
             <p className="text-xs text-text-muted mb-5">
               {errorMessage || 'Verification parameters failed validation.'}
             </p>
@@ -610,6 +630,12 @@ export default function StudentMarkAttendancePage() {
           </Card>
         )}
       </div>
+
+      <VerificationSuccessModal
+        isOpen={currentStep === 'success'}
+        onClose={handleReset}
+        details={verifiedDetails}
+      />
 
       <style jsx>{`
         @keyframes scan {

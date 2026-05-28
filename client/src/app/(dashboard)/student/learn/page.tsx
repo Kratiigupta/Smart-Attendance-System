@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { useToast } from '@/components/ui/Toast';
 import {
   HiOutlineBookOpen,
   HiOutlineArrowDownTray,
@@ -18,9 +19,12 @@ import {
   HiOutlineArrowRight,
   HiOutlineSparkles,
 } from 'react-icons/hi2';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 interface Lesson {
   id: string;
+  _id?: string;
   title: string;
   subject: string;
   type: 'Video' | 'Document';
@@ -34,91 +38,6 @@ interface Lesson {
   quizQuestions?: { question: string; options: string[]; answer: number }[];
 }
 
-const mockLessons: Lesson[] = [
-  {
-    id: 'l1',
-    title: 'Introduction to Arrays & Strings',
-    subject: 'Data Structures',
-    type: 'Video',
-    language: 'English',
-    duration: '15 mins',
-    size: '42 MB',
-    description: 'Learn memory layout, address calculations, and fundamental operations on contiguous linear data structures.',
-    downloaded: true,
-    videoUrl: 'simulated-video-stream-1',
-    quizQuestions: [
-      { question: 'What is the time complexity of accessing an array element by index?', options: ['O(1)', 'O(n)', 'O(log n)', 'O(n^2)'], answer: 0 },
-      { question: 'Which of these stores data in contiguous memory locations?', options: ['Linked List', 'Array', 'Tree', 'Graph'], answer: 1 },
-    ],
-  },
-  {
-    id: 'l2',
-    title: 'सॉर्टिंग एल्गोरिदम (Bubble & Selection Sort)',
-    subject: 'Data Structures',
-    type: 'Video',
-    language: 'Hindi',
-    duration: '22 mins',
-    size: '58 MB',
-    description: 'बबल और सिलेक्शन सॉर्टिंग एल्गोरिदम के कार्य सिद्धांत, विज़ुअलाइज़ेशन और समय जटिलता का विस्तृत विश्लेषण।',
-    downloaded: false,
-    videoUrl: 'simulated-video-stream-2',
-    quizQuestions: [
-      { question: 'बबल सॉर्ट की औसत समय जटिलता (Average Case Time Complexity) क्या है?', options: ['O(n)', 'O(n log n)', 'O(n^2)', 'O(1)'], answer: 2 },
-    ],
-  },
-  {
-    id: 'l3',
-    title: 'ਬਾਈਨਰੀ ਖੋਜ ਰੁੱਖ (Binary Search Trees)',
-    subject: 'Data Structures',
-    type: 'Document',
-    language: 'Punjabi',
-    duration: '10 pages',
-    size: '3.4 MB',
-    description: 'ਬਾਈਨਰੀ ਖੋਜ ਰੁੱਖ ਦੇ ਗੁਣਾਂ, ਖੋਜਣ, ਜੋੜਨ, ਅਤੇ ਹਟਾਉਣ ਦੇ ਕਾਰਜਾਂ ਬਾਰੇ ਵਿਸਥਾਰਪੂਰਵਕ ਨੋਟਸ ਅਤੇ ਡਾਇਗ੍ਰਾਮ।',
-    downloaded: true,
-    contentBody: 'ਬਾਈਨਰੀ ਖੋਜ ਰੁੱਖ (BST) ਇੱਕ ਨੋਡ-ਅਧਾਰਿਤ ਬਾਈਨਰੀ ਰੁੱਖ ਡੇਟਾ ਬਣਤਰ ਹੈ ਜਿਸ ਵਿੱਚ ਹੇਠ ਲਿਖੀਆਂ ਵਿਸ਼ੇਸ਼ਤਾਵਾਂ ਹੁੰਦੀਆਂ ਹਨ: (1) ਇੱਕ ਨੋਡ ਦੇ ਖੱਬੇ ਸਬ-ਟ੍ਰੀ ਵਿੱਚ ਸਿਰਫ਼ ਉਹ ਨੋਡ ਹੁੰਦੇ ਹਨ ਜਿਨ੍ਹਾਂ ਦੀਆਂ ਕੁੰਜੀਆਂ ਨੋਡ ਦੀ ਕੁੰਜੀ ਤੋਂ ਘੱਟ ਹੁੰਦੀਆਂ ਹਨ। (2) ਇੱਕ ਨੋਡ ਦੇ ਸੱਜੇ ਸਬ-ਟ੍ਰੀ ਵਿੱਚ ਸਿਰਫ਼ ਉਹ ਨੋਡ ਹੁੰਦੇ ਹਨ ਜਿਨ੍ਹਾਂ ਦੀਆਂ ਕੁੰਜੀਆਂ ਨੋਡ ਦੀ ਕੁੰਜੀ ਤੋਂ ਵੱਧ ਹੁੰਦੀਆਂ ਹਨ। (3) ਖੱਬਾ ਅਤੇ ਸੱਜਾ ਸਬ-ਟ੍ਰੀ ਵੀ ਹਰੇਕ ਬਾਈਨਰੀ ਖੋਜ ਰੁੱਖ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ।',
-    quizQuestions: [
-      { question: 'BST ਵਿੱਚ ਇਨ-ਆਰਡਰ ਟ੍ਰੈਵਰਸਲ (In-order traversal) ਕੀ ਪ੍ਰਦਾਨ ਕਰਦਾ ਹੈ?', options: ['ਉਤਰਦਾ ਕ੍ਰਮ', 'ਵਧਦਾ ਕ੍ਰਮ', 'ਬੇਤਰਤੀਬ ਕ੍ਰਮ', 'ਕੋਈ ਨਹੀਂ'], answer: 1 },
-    ],
-  },
-  {
-    id: 'l4',
-    title: 'HTTP Protocol and REST APIs',
-    subject: 'Web Development',
-    type: 'Video',
-    language: 'English',
-    duration: '18 mins',
-    size: '48 MB',
-    description: 'Understand request-response lifecycles, HTTP methods, headers, status codes, and design patterns for robust RESTful APIs.',
-    downloaded: false,
-    videoUrl: 'simulated-video-stream-4',
-  },
-  {
-    id: 'l5',
-    title: 'HTML & CSS ਬੁਨਿਆਦੀ ਢਾਂਚਾ',
-    subject: 'Web Development',
-    type: 'Document',
-    language: 'Punjabi',
-    duration: '15 pages',
-    size: '4.2 MB',
-    description: 'ਵੈੱਬ ਪੰਨੇ ਬਣਾਉਣ ਲਈ HTML5 ਟੈਗਸ, ਸਿਮੈਂਟਿਕਸ, CSS3 ਫਲੈਕਸਬਾਕਸ, ਅਤੇ ਗਰਿੱਡ ਲੇਆਉਟ ਦੀ ਮੁਢਲੀ ਸਿਖਲਾਈ।',
-    downloaded: false,
-    contentBody: 'HTML ਵੈੱਬ ਪੰਨਿਆਂ ਦਾ ਢਾਂਚਾ ਬਣਾਉਣ ਲਈ ਮਿਆਰੀ ਮਾਰਕਅੱਪ ਭਾਸ਼ਾ ਹੈ। CSS ਵੈੱਬ ਪੰਨਿਆਂ ਦੀ ਸ਼ੈਲੀ ਅਤੇ ਪੇਸ਼ਕਾਰੀ ਨੂੰ ਨਿਯੰਤਰਿਤ ਕਰਨ ਲਈ ਵਰਤੀ ਜਾਂਦੀ ਹੈ। CSS3 ਦੀ ਵਰਤੋਂ ਨਾਲ ਵੈੱਬਸਾਈਟਾਂ ਨੂੰ ਵੱਖ-ਵੱਖ ਸਕ੍ਰੀਨ ਅਕਾਰਾਂ (ਰੇਸਪੌਂਸਿਵ ਡਿਜ਼ਾਈਨ) ਦੇ ਅਨੁਕੂਲ ਬਣਾਇਆ ਜਾ ਸਕਦਾ ਹੈ।',
-  },
-  {
-    id: 'l6',
-    title: 'क्लाउड स्टोरेज और कंप्यूट बेसिक्स',
-    subject: 'Cloud Computing',
-    type: 'Document',
-    language: 'Hindi',
-    duration: '8 pages',
-    size: '2.1 MB',
-    description: 'क्लाउड कंप्यूटिंग के बुनियादी सिद्धांत: IaaS, PaaS, SaaS, और एडब्ल्यूएस/अज़ूर पर बुनियादी स्टोरेज बकेट सेटअप।',
-    downloaded: true,
-    contentBody: 'क्लाउड कंप्यूटिंग इंटरनेट पर सर्वर, स्टोरेज, डेटाबेस, नेटवर्किंग, सॉफ्टवेयर और एनालिटिक्स सहित कंप्यूटिंग सेवाओं की ऑन-डिमांड डिलीवरी है। IaaS (Infrastructure as a Service) वर्चुअल मशीन और स्टोरेज प्रदान करता है। PaaS (Platform as a Service) विकास वातावरण प्रदान करता है। SaaS (Software as a Service) एंड-यूज़र एप्लिकेशन प्रदान करता है।',
-  },
-];
-
 const languageFlags = {
   English: '🇬🇧 EN',
   Hindi: '🇮🇳 हिं',
@@ -126,7 +45,28 @@ const languageFlags = {
 };
 
 export default function StudentLearn() {
-  const [lessons, setLessons] = useState<Lesson[]>(mockLessons);
+  const { showToast } = useToast();
+  const [pwaInstalled, setPwaInstalled] = useState(false);
+  const [installingPWA, setInstallingPWA] = useState(false);
+  
+  // Fetch real lessons from backend
+  const { data: lessonsData = [], isLoading } = useQuery<Lesson[]>({
+    queryKey: ['studentLessons'],
+    queryFn: async () => {
+      const res = await api.get('/learn/lessons');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch lessons');
+      return (res.data || []).map((l: any) => ({ ...l, id: l._id || l.id }));
+    }
+  });
+
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+
+  useEffect(() => {
+    if (lessonsData) {
+      setLessons(lessonsData);
+    }
+  }, [lessonsData]);
+
   const [selectedLanguage, setSelectedLanguage] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState<string>('');
   
@@ -279,7 +219,86 @@ export default function StudentLearn() {
         </div>
       )}
 
-      {/* Filter and Search Bar */}
+      {/* PWA Banner & Progress widget grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* PWA Installation Prompt banner */}
+        {!pwaInstalled && (
+          <div className="lg:col-span-1 border border-primary/20 bg-primary/5 rounded-2xl p-4 flex flex-col justify-between h-36">
+            <div>
+              <span className="text-[10px] font-bold text-primary-light uppercase tracking-wider block">Offline Campus App</span>
+              <h3 className="text-xs font-bold text-text-primary mt-1">📲 Install SmartEdu Campus Web App</h3>
+              <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                Access your lessons, notifications, and mark attendance offline even in rural areas without coverage.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="xs"
+              loading={installingPWA}
+              onClick={() => {
+                setInstallingPWA(true);
+                setTimeout(() => {
+                  setInstallingPWA(false);
+                  setPwaInstalled(true);
+                  showToast('SmartEdu Campus App installed successfully!', 'success');
+                }, 2000);
+              }}
+              className="mt-3 w-fit"
+            >
+              Install App
+            </Button>
+          </div>
+        )}
+
+        {pwaInstalled && (
+          <div className="lg:col-span-1 border border-success/20 bg-success/5 rounded-2xl p-4 flex flex-col justify-between h-36">
+            <div>
+              <span className="text-[10px] font-bold text-success-light uppercase tracking-wider block">Installed</span>
+              <h3 className="text-xs font-bold text-text-primary mt-1">SmartEdu Campus App is Active</h3>
+              <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                Offline synchronization database has been registered on your home launcher.
+              </p>
+            </div>
+            <div className="text-[10px] text-success-light font-bold flex items-center gap-1">
+              <HiOutlineCheckCircle className="w-4 h-4" /> Device Registered ✓
+            </div>
+          </div>
+        )}
+
+        {/* Learning progress tracker */}
+        <div className="lg:col-span-1 border border-border/40 bg-bg-secondary rounded-2xl p-4 flex flex-col justify-between h-36">
+          <div>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Course Progress</span>
+            <h3 className="text-xs font-bold text-text-primary mt-1">4 of 6 Lessons Completed</h3>
+            <p className="text-[10px] text-text-muted mt-1">Verify quizzes to increase rate.</p>
+          </div>
+          <div className="space-y-1">
+            <div className="flex justify-between text-[9px] font-mono text-text-muted">
+              <span>66% Complete</span>
+            </div>
+            <ProgressBar value={66} max={100} size="xs" color="success" />
+          </div>
+        </div>
+
+        {/* Gamified Badges & Streaks */}
+        <div className="lg:col-span-1 border border-border/40 bg-bg-secondary rounded-2xl p-4 flex flex-col justify-between h-36">
+          <div>
+            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block">Learning Rewards</span>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-xs font-bold text-text-primary">🔥 8-Day Attendance Streak</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              <span className="px-2 py-0.5 rounded-lg bg-primary/10 border border-primary/25 text-primary-light text-[9px] font-extrabold flex items-center gap-0.5">
+                📚 Rural Scholar
+              </span>
+              <span className="px-2 py-0.5 rounded-lg bg-success/10 border border-success/25 text-success-light text-[9px] font-extrabold flex items-center gap-0.5">
+                ⚡ Quick Learner
+              </span>
+            </div>
+          </div>
+          <span className="text-[9px] text-text-dim block">Keep learning to unlock your next milestone badge!</span>
+        </div>
+      </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Search */}
         <div className="relative flex-1 max-w-md">

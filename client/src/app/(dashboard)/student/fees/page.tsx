@@ -15,6 +15,9 @@ import {
   HiOutlineCheckCircle,
   HiOutlineCheck,
 } from 'react-icons/hi2';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/Toast';
+import { jsPDF } from 'jspdf';
 
 interface FeeItem {
   id: string;
@@ -48,10 +51,70 @@ const mockTransactions: Transaction[] = [
 ];
 
 export default function StudentFees() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [ledger, setLedger] = useState<FeeItem[]>(mockFeeLedger);
   const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+
+  const exportReceiptPDF = (txn: Transaction) => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(22);
+    doc.setTextColor(30, 41, 59);
+    doc.text(user?.collegeName || 'SmartEdu Campus', 105, 25, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Affiliated to State Technical University', 105, 32, { align: 'center' });
+    doc.text('E-Receipt for Academic Fees', 105, 37, { align: 'center' });
+    
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, 42, 195, 42);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Transaction Ref: ${txn.transactionId}`, 15, 52);
+    doc.text(`Receipt Number: ${txn.receiptNo}`, 195, 52, { align: 'right' });
+    doc.text(`Student Name: ${user?.name || 'Abhishek Singh'}`, 15, 60);
+    doc.text(`Roll Number: ${user?.studentData?.rollNumber || 'CSE-2022-05'}`, 195, 60, { align: 'right' });
+    doc.text(`Payment Date: ${txn.date}`, 15, 68);
+    doc.text(`Payment Method: ${txn.method}`, 195, 68, { align: 'right' });
+    
+    doc.line(15, 75, 195, 75);
+    
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Fee Head Description', 15, 83);
+    doc.text('Amount (INR)', 195, 83, { align: 'right' });
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Academic & Semester Fee Clearance', 15, 91);
+    doc.text(`Rs. ${txn.amount.toLocaleString('en-IN')}`, 195, 91, { align: 'right' });
+    
+    doc.line(15, 98, 195, 98);
+    
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Total Sum Paid:', 15, 106);
+    doc.text(`Rs. ${txn.amount.toLocaleString('en-IN')}`, 195, 106, { align: 'right' });
+    
+    doc.line(15, 115, 195, 115);
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(16, 185, 129);
+    doc.text('DIGITALLY VERIFIED & COMPLETED TRANSACTION', 105, 123, { align: 'center' });
+    
+    doc.save(`Receipt_${txn.transactionId}.pdf`);
+    showToast('Receipt downloaded successfully as PDF.', 'success');
+  };
   
   // Payment Gateway States
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
@@ -265,7 +328,7 @@ export default function StudentFees() {
             <Button variant="outline" size="sm" onClick={() => setIsReceiptModalOpen(false)}>
               Close
             </Button>
-            <Button variant="primary" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />}>
+            <Button variant="primary" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />} onClick={() => selectedTxn && exportReceiptPDF(selectedTxn)}>
               Download PDF
             </Button>
           </div>
@@ -274,9 +337,9 @@ export default function StudentFees() {
         {selectedTxn && (
           <div className="p-4 space-y-6 text-xs text-text-secondary">
             {/* College Header */}
-            <div className="text-center space-y-1 pb-4 border-b border-border/20">
-              <div className="text-lg font-heading font-black text-text-primary">USCDLE SMART CAMPUS</div>
-              <div className="text-[10px] text-text-muted">Affiliated to State Technical University • Nabha Campus</div>
+            <div className="text-center space-y-1 pb-4 border-b border-b-border/20">
+              <div className="text-lg font-heading font-black text-text-primary">{user?.collegeName || 'SmartEdu Campus'}</div>
+              <div className="text-[10px] text-text-muted">Affiliated to State Technical University • {user?.collegeName ? `${user.collegeName} Campus` : 'Nawabganj, Unnao'}</div>
               <div className="text-[9px] text-text-dim">E-Receipt for Academic Fees</div>
             </div>
 
@@ -292,11 +355,11 @@ export default function StudentFees() {
               </div>
               <div>
                 <span className="text-text-dim block text-[9px] uppercase font-bold">Student Name</span>
-                <span className="text-text-primary font-bold">Abhishek Singh</span>
+                <span className="text-text-primary font-bold">{user?.name || 'Abhishek Singh'}</span>
               </div>
               <div className="text-right">
                 <span className="text-text-dim block text-[9px] uppercase font-bold">Roll Number</span>
-                <span className="text-text-primary font-bold">CSE-2022-05</span>
+                <span className="text-text-primary font-bold">{user?.studentData?.rollNumber || 'CSE-2022-05'}</span>
               </div>
               <div>
                 <span className="text-text-dim block text-[9px] uppercase font-bold">Payment Date</span>
@@ -388,7 +451,7 @@ export default function StudentFees() {
               <div className="p-4 rounded-xl bg-bg-secondary border border-border/15 space-y-2.5">
                 <div className="flex justify-between py-0.5">
                   <span className="text-text-muted">Payee</span>
-                  <span className="font-bold text-text-primary">USCDLE Smart Campus</span>
+                  <span className="font-bold text-text-primary">SmartEdu Campus</span>
                 </div>
                 <div className="flex justify-between py-0.5">
                   <span className="text-text-muted">Payment Category</span>

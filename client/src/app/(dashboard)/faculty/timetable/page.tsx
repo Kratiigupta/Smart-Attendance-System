@@ -16,6 +16,9 @@ import {
   HiOutlineQueueList,
   HiOutlineSquares2X2,
 } from 'react-icons/hi2';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/components/ui/Toast';
+import { jsPDF } from 'jspdf';
 
 interface TimetableSlot {
   id: string;
@@ -89,6 +92,8 @@ const typeColors = {
 };
 
 export default function FacultyTimetable() {
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<TimetableSlot | null>(null);
@@ -117,9 +122,79 @@ export default function FacultyTimetable() {
 
   const handleSwapSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert(`Swap request submitted for ${selectedSlot?.courseName} on next ${swapTarget.date} (Slot ${swapTarget.slot}) with Dr. ${swapTarget.faculty}`);
+    showToast(`Swap request submitted for ${selectedSlot?.courseName} on next ${swapTarget.date} (Slot ${swapTarget.slot}) with Dr. ${swapTarget.faculty}`, 'success');
     setIsSwapModalOpen(false);
     setIsDetailModalOpen(false);
+  };
+
+  const exportTimetablePDF = () => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.setTextColor(30, 41, 59);
+    doc.text(user?.collegeName || 'SmartEdu Campus', 105, 25, { align: 'center' });
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Faculty Teaching Timetable', 105, 32, { align: 'center' });
+    
+    doc.setDrawColor(203, 213, 225);
+    doc.line(15, 38, 195, 38);
+    
+    // Faculty Info
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Lecturer Name: ${user?.name || 'Dr. Rajesh Kumar'}`, 15, 47);
+    doc.text(`Employee ID: ${user?.facultyData?.employeeId || 'EMP-2021-09'}`, 195, 47, { align: 'right' });
+    doc.text(`Department: ${user?.facultyData?.department?.name || 'Computer Science & Engineering'}`, 15, 54);
+    doc.text(`Designation: ${user?.facultyData?.designation || 'Associate Professor'}`, 195, 54, { align: 'right' });
+    
+    doc.line(15, 60, 195, 60);
+    
+    // Table Headers
+    doc.setFont('Helvetica', 'bold');
+    doc.setTextColor(30, 41, 59);
+    doc.text('Day', 15, 68);
+    doc.text('Time Slot', 40, 68);
+    doc.text('Subject Details', 85, 68);
+    doc.text('Classroom', 160, 68);
+    doc.text('Batch / Sem', 178, 68);
+    
+    doc.line(15, 73, 195, 73);
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    
+    let y = 80;
+    initialTimetableData.forEach((slot) => {
+      if (y > 270) {
+        doc.addPage();
+        y = 25;
+      }
+      doc.text(slot.day, 15, y);
+      doc.text(slot.time, 40, y);
+      doc.text(`${slot.courseName} (${slot.courseCode}) [${slot.type}]`, 85, y);
+      doc.text(slot.room, 160, y);
+      doc.text(slot.batch, 178, y);
+      y += 8;
+    });
+    
+    doc.line(15, y + 2, 195, y + 2);
+    
+    y += 10;
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(99, 102, 241);
+    doc.text('GENERATED SECURELY VIA SMARTEDU PORTAL', 105, y, { align: 'center' });
+    
+    doc.save('Faculty_Timetable.pdf');
+    showToast('Teaching timetable exported as PDF successfully!', 'success');
   };
 
   return (
@@ -133,7 +208,7 @@ export default function FacultyTimetable() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />}>
+          <Button variant="outline" size="sm" icon={<HiOutlineArrowDownTray className="w-4 h-4" />} onClick={exportTimetablePDF}>
             Export PDF
           </Button>
           <div className="flex bg-bg-elevated border border-border/40 p-0.5 rounded-xl">

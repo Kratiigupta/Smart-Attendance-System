@@ -1,56 +1,23 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { Course } from '../models/Course.js';
-import { Department } from '../models/Department.js';
+import { courseSchema } from '../validators/course.validator.js';
+import {
+  createCourseData,
+  getCoursesFiltered,
+  getCourseDetails,
+  updateCourseData,
+  deleteCourseData
+} from '../services/course.service.js';
 import { AuthRequest } from '../middleware/auth.js';
-
-const courseSchema = z.object({
-  departmentId: z.string(),
-  code: z.string().min(2).toUpperCase(),
-  title: z.string().min(2),
-  credits: z.number().min(1).max(12),
-  type: z.enum(['DSC', 'Minor', 'MDC', 'AEC', 'SEC', 'VAC', 'Research', 'Internship']),
-  ltp: z.object({
-    lecture: z.number().min(0),
-    tutorial: z.number().min(0),
-    practical: z.number().min(0)
-  }),
-  semester: z.number().min(1).max(8),
-  programmeType: z.enum(['FYUP', 'ITEP', 'PG']).default('FYUP'),
-  maxStudents: z.number().optional(),
-  isElective: z.boolean().default(false),
-  prerequisites: z.array(z.string()).default([])
-});
 
 export const createCourse = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const collegeId = req.user?.collegeId;
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
+    }
+
     const body = courseSchema.parse(req.body);
-
-    // Validate department
-    const dept = await Department.findOne({ _id: body.departmentId, collegeId });
-    if (!dept) {
-      throw { status: 404, message: 'Department not found.' };
-    }
-
-    // Validate duplicate course code
-    const duplicate = await Course.findOne({ collegeId, code: body.code });
-    if (duplicate) {
-      throw { status: 400, message: `Course code ${body.code} is already registered.` };
-    }
-
-    // Validate credit match (LTP sum check)
-    // In typical Indian systems, LTP: L + T + P/2 = Credits (or sometimes L+T+P)
-    // We will just store the values as-is but validate that it matches logical constraints
-    const calculatedCredits = body.ltp.lecture + body.ltp.tutorial + Math.floor(body.ltp.practical / 2);
-    // Warning if credits are completely mismatching (not blocking but logical check)
-    console.log(`LTP: ${body.ltp.lecture}-${body.ltp.tutorial}-${body.ltp.practical} maps to ~${calculatedCredits} credits. Specified: ${body.credits}`);
-
-    const course = new Course({
-      collegeId,
-      ...body
-    });
-    await course.save();
+    const course = await createCourseData(collegeId, body);
 
     return res.status(201).json({
       success: true,
@@ -65,30 +32,19 @@ export const createCourse = async (req: AuthRequest, res: Response, next: NextFu
 export const getCourses = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const collegeId = req.user?.collegeId;
-
-    const departmentId = req.query.departmentId as string;
-    const semester = req.query.semester as string;
-    const type = req.query.type as string;
-    const programmeType = req.query.programmeType as string;
-    const search = req.query.search as string;
-
-    const filterQuery: any = { collegeId };
-
-    if (departmentId) filterQuery.departmentId = departmentId;
-    if (semester) filterQuery.semester = parseInt(semester, 10);
-    if (type) filterQuery.type = type;
-    if (programmeType) filterQuery.programmeType = programmeType;
-
-    if (search) {
-      filterQuery.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { code: { $regex: search, $options: 'i' } }
-      ];
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
 
-    const courses = await Course.find(filterQuery)
-      .populate('departmentId', 'name code')
-      .sort({ code: 1 });
+    const filter = {
+      departmentId: req.query.departmentId as string,
+      semester: req.query.semester as string,
+      type: req.query.type as string,
+      programmeType: req.query.programmeType as string,
+      search: req.query.search as string
+    };
+
+    const courses = await getCoursesFiltered(collegeId, filter);
 
     return res.status(200).json({
       success: true,
@@ -103,14 +59,11 @@ export const getCourseById = async (req: AuthRequest, res: Response, next: NextF
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
-
-    const course = await Course.findOne({ _id: id, collegeId })
-      .populate('departmentId', 'name code')
-      .populate('prerequisites', 'title code');
-
-    if (!course) {
-      throw { status: 404, message: 'Course not found.' };
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
+
+    const course = await getCourseDetails(collegeId, id);
 
     return res.status(200).json({
       success: true,
@@ -125,26 +78,12 @@ export const updateCourse = async (req: AuthRequest, res: Response, next: NextFu
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
+    }
+
     const body = courseSchema.parse(req.body);
-
-    const course = await Course.findOne({ _id: id, collegeId });
-    if (!course) {
-      throw { status: 404, message: 'Course not found.' };
-    }
-
-    // Check duplicate code if changed
-    if (body.code !== course.code) {
-      const duplicate = await Course.findOne({ collegeId, code: body.code });
-      if (duplicate) {
-        throw { status: 400, message: `Course code ${body.code} is already allocated to another course.` };
-      }
-    }
-
-    const updated = await Course.findOneAndUpdate(
-      { _id: id, collegeId },
-      { $set: body },
-      { new: true, runValidators: true }
-    );
+    const updated = await updateCourseData(collegeId, id, body);
 
     return res.status(200).json({
       success: true,
@@ -160,11 +99,11 @@ export const deleteCourse = async (req: AuthRequest, res: Response, next: NextFu
   try {
     const collegeId = req.user?.collegeId;
     const { id } = req.params;
-
-    const course = await Course.findOneAndDelete({ _id: id, collegeId });
-    if (!course) {
-      throw { status: 404, message: 'Course not found.' };
+    if (!collegeId) {
+      throw { status: 400, message: 'College ID is required.' };
     }
+
+    await deleteCourseData(collegeId, id);
 
     return res.status(200).json({
       success: true,

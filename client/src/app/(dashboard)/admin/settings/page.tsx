@@ -5,8 +5,20 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { HiOutlineCog6Tooth, HiOutlineShieldCheck, HiOutlineBellAlert, HiOutlinePaintBrush } from 'react-icons/hi2';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminSettingsPage() {
+  const { user } = useAuth();
+  
+  const settingsItems = [
+    { label: 'College Name', value: user?.collegeName || 'SmartEdu Campus' },
+    { label: 'College Code', value: user?.collegeCode || 'SEC' },
+    { label: 'Domain', value: user?.email ? user.email.split('@')[1] : 'smarteducampus.com' },
+    { label: 'City', value: 'Nawabganj, Unnao' },
+    { label: 'Timezone', value: 'Asia/Kolkata (IST)' },
+    { label: 'Subscription', value: 'Premium' },
+  ];
+
   return (
     <div className="space-y-6 animate-fadeIn max-w-4xl">
       <div>
@@ -22,14 +34,7 @@ export default function AdminSettingsPage() {
         headerRight={<Button variant="outline" size="xs">Edit</Button>}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-          {[
-            { label: 'College Name', value: 'Govt. College of Education, Nabha' },
-            { label: 'College Code', value: 'GCEN' },
-            { label: 'Domain', value: 'gcenabha.edu.in' },
-            { label: 'City', value: 'Nabha, Punjab' },
-            { label: 'Timezone', value: 'Asia/Kolkata (IST)' },
-            { label: 'Subscription', value: 'Premium' },
-          ].map(item => (
+          {settingsItems.map(item => (
             <div key={item.label} className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider">{item.label}</span>
               <span className="text-xs font-semibold text-text-primary">{item.value}</span>
