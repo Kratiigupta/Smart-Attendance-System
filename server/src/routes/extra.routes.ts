@@ -7,6 +7,13 @@ import { Exam } from '../models/Exam.js';
 import { FeeItem, Transaction } from '../models/Fee.js';
 import { AdmissionApplication } from '../models/Admission.js';
 import { User } from '../models/User.js';
+import { Room } from '../models/Room.js';
+import { HostelBlock, HostelRoom } from '../models/Hostel.js';
+import { LeaveApplication } from '../models/Leave.js';
+import { Student } from '../models/User.js';
+import { ClassSession } from '../models/ClassSession.js';
+import { Attendance } from '../models/Attendance.js';
+import { Course } from '../models/Course.js';
 
 const router = Router();
 
@@ -448,6 +455,379 @@ router.post('/ai/chat', async (req: AuthRequest, res: Response) => {
     }
 
     res.status(200).json({ success: true, data: { reply } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// HOSTELS & ROOM ALLOCATIONS
+// ==========================================
+router.get('/hostels', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    if (!collegeId) return res.status(400).json({ success: false, message: 'College context missing' });
+
+    let data = await HostelBlock.find({ collegeId: new Types.ObjectId(collegeId) });
+
+    if (data.length === 0) {
+      const defaultBlocks = [
+        { collegeId: new Types.ObjectId(collegeId), name: 'Block A (Boys)', totalRooms: 50, occupiedRooms: 42, type: 'Boys' as const, floors: 4 },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Block B (Boys)', totalRooms: 60, occupiedRooms: 55, type: 'Boys' as const, floors: 5 },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Block C (Girls)', totalRooms: 40, occupiedRooms: 38, type: 'Girls' as const, floors: 4 },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Block D (Girls)', totalRooms: 45, occupiedRooms: 40, type: 'Girls' as const, floors: 4 }
+      ];
+      data = await HostelBlock.insertMany(defaultBlocks);
+    }
+
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.get('/hostels/rooms', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    const { blockName } = req.query;
+    if (!collegeId) return res.status(400).json({ success: false, message: 'College context missing' });
+    if (!blockName) return res.status(400).json({ success: false, message: 'Block name query param required' });
+
+    let data = await HostelRoom.find({ 
+      collegeId: new Types.ObjectId(collegeId), 
+      blockName: String(blockName) 
+    }).sort({ roomName: 1 });
+
+    if (data.length === 0) {
+      const isGirls = String(blockName).includes('Girls');
+      const prefix = String(blockName).includes('Block A') ? 'A' : String(blockName).includes('Block B') ? 'B' : String(blockName).includes('Block C') ? 'C' : 'D';
+      
+      const defaultRooms = [
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-101`, floor: 'Ground', capacity: 3, occupants: isGirls ? ['Priya Verma', 'Aaradhya Sharma', 'Anjali Gupta'] : ['Amit Kumar', 'Rahul Singh', 'Vikash Yadav'], status: 'full' as const },
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-102`, floor: 'Ground', capacity: 3, occupants: isGirls ? ['Sneha Reddy', 'Neha Kaushik'] : ['Deepak Verma', 'Sandeep Singh'], status: 'partial' as const },
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-103`, floor: 'Ground', capacity: 3, occupants: [], status: 'empty' as const },
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-104`, floor: 'Ground', capacity: 2, occupants: isGirls ? ['Aditi Sen', 'Mehak Kaur'] : ['Ravi Kumar', 'Mohit Yadav'], status: 'full' as const },
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-105`, floor: 'Ground', capacity: 2, occupants: isGirls ? ['Komal Jha'] : ['Gaurav Sharma'], status: 'partial' as const },
+        { collegeId: new Types.ObjectId(collegeId), blockName: String(blockName), roomName: `${prefix}-106`, floor: 'Ground', capacity: 3, occupants: [], status: 'maintenance' as const }
+      ];
+      data = await HostelRoom.insertMany(defaultRooms);
+    }
+
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/hostels/allocate', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    const { blockName, roomName, studentName } = req.body;
+    if (!collegeId) return res.status(400).json({ success: false, message: 'College context missing' });
+    if (!blockName || !roomName || !studentName) {
+      return res.status(400).json({ success: false, message: 'Block, room, and student name required' });
+    }
+
+    const room = await HostelRoom.findOne({ 
+      collegeId: new Types.ObjectId(collegeId), 
+      blockName, 
+      roomName 
+    });
+
+    if (!room) return res.status(404).json({ success: false, message: 'Room not found' });
+    if (room.status === 'full') return res.status(400).json({ success: false, message: 'Room is already fully occupied' });
+    if (room.status === 'maintenance') return res.status(400).json({ success: false, message: 'Room is currently under maintenance' });
+
+    room.occupants.push(studentName);
+    
+    if (room.occupants.length >= room.capacity) {
+      room.status = 'full';
+    } else {
+      room.status = 'partial';
+    }
+
+    await room.save();
+
+    // Increment occupiedRooms in Block
+    await HostelBlock.findOneAndUpdate(
+      { collegeId: new Types.ObjectId(collegeId), name: blockName },
+      { $inc: { occupiedRooms: 1 } }
+    );
+
+    res.status(200).json({ success: true, message: 'Room allocated successfully', data: room });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// CLASSROOM ROOMS
+// ==========================================
+router.get('/rooms', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    if (!collegeId) return res.status(400).json({ success: false, message: 'College context missing' });
+
+    let data = await Room.find({ collegeId: new Types.ObjectId(collegeId) });
+
+    if (data.length === 0) {
+      const defaultRooms = [
+        { collegeId: new Types.ObjectId(collegeId), name: 'LH-101', building: 'Main Block', floor: 'Ground', capacity: 60, type: 'Lecture Hall' as const, status: 'occupied' as const, currentClass: 'Eng. Math III', occupancy: 55, hasWifi: true, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'LH-102', building: 'Main Block', floor: 'Ground', capacity: 60, type: 'Lecture Hall' as const, status: 'available' as const, currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'LH-201', building: 'Main Block', floor: '1st', capacity: 80, type: 'Lecture Hall' as const, status: 'occupied' as const, currentClass: 'Digital Electronics', occupancy: 42, hasWifi: true, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'LH-301', building: 'Main Block', floor: '2nd', capacity: 50, type: 'Lecture Hall' as const, status: 'occupied' as const, currentClass: 'Data Structures', occupancy: 45, hasWifi: true, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'LH-401', building: 'Science Block', floor: '3rd', capacity: 50, type: 'Lecture Hall' as const, status: 'maintenance' as const, currentClass: null, occupancy: 0, hasWifi: false, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Lab-101', building: 'CS Block', floor: 'Ground', capacity: 40, type: 'Computer Lab' as const, status: 'available' as const, currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Lab-201', building: 'CS Block', floor: '1st', capacity: 35, type: 'Computer Lab' as const, status: 'occupied' as const, currentClass: 'Web Dev Lab', occupancy: 32, hasWifi: true, hasProjector: false },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Lab-301', building: 'ECE Block', floor: '2nd', capacity: 30, type: 'Electronics Lab' as const, status: 'available' as const, currentClass: null, occupancy: 0, hasWifi: true, hasProjector: false },
+        { collegeId: new Types.ObjectId(collegeId), name: 'Seminar Hall', building: 'Admin Block', floor: '1st', capacity: 200, type: 'Seminar Hall' as const, status: 'available' as const, currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true }
+      ];
+      data = await Room.insertMany(defaultRooms);
+    }
+
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/rooms', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    if (!collegeId) return res.status(400).json({ success: false, message: 'College context missing' });
+
+    const newRoom = new Room({
+      collegeId: new Types.ObjectId(collegeId),
+      ...req.body
+    });
+
+    await newRoom.save();
+    res.status(201).json({ success: true, message: 'Room created successfully', data: newRoom });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// LEAVE APPLICATIONS
+// ==========================================
+router.get('/leaves', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    const userId = req.user?.userId;
+    if (!collegeId || !userId) return res.status(400).json({ success: false, message: 'Auth context missing' });
+
+    let data = await LeaveApplication.find({ 
+      collegeId: new Types.ObjectId(collegeId), 
+      facultyId: new Types.ObjectId(userId) 
+    }).sort({ createdAt: -1 });
+
+    if (data.length === 0) {
+      const defaultLeaves = [
+        { collegeId: new Types.ObjectId(collegeId), facultyId: new Types.ObjectId(userId), leaveType: 'Casual Leave', startDate: '2026-06-02', endDate: '2026-06-03', reason: 'Personal family business in Delhi.', proxyFaculty: 'Dr. Amit Sharma', status: 'Approved' as const, appliedDate: '2026-05-15' },
+        { collegeId: new Types.ObjectId(collegeId), facultyId: new Types.ObjectId(userId), leaveType: 'Sick Leave', startDate: '2026-05-10', endDate: '2026-05-11', reason: 'Viral fever, doctor advised bed rest.', proxyFaculty: 'Dr. Sunita Verma', status: 'Approved' as const, appliedDate: '2026-05-09' },
+        { collegeId: new Types.ObjectId(collegeId), facultyId: new Types.ObjectId(userId), leaveType: 'Duty Leave', startDate: '2026-05-28', endDate: '2026-05-28', reason: 'Attending National Seminar on AI in Education.', proxyFaculty: 'Prof. Vikram Malhotra', status: 'Pending' as const, appliedDate: '2026-05-20' }
+      ];
+      data = await LeaveApplication.insertMany(defaultLeaves);
+    }
+
+    res.status(200).json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/leaves', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    const userId = req.user?.userId;
+    if (!collegeId || !userId) return res.status(400).json({ success: false, message: 'Auth context missing' });
+
+    const newLeave = new LeaveApplication({
+      collegeId: new Types.ObjectId(collegeId),
+      facultyId: new Types.ObjectId(userId),
+      appliedDate: new Date().toISOString().split('T')[0],
+      status: 'Pending',
+      ...req.body
+    });
+
+    await newLeave.save();
+    res.status(201).json({ success: true, message: 'Leave request submitted successfully', data: newLeave });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// PARENT PORTAL DASHBOARD
+// ==========================================
+router.get('/parent/dashboard', async (req: AuthRequest, res: Response) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    const parentId = req.user?.userId;
+    if (!collegeId || !parentId) return res.status(400).json({ success: false, message: 'Auth context missing' });
+
+    const parent = await User.findById(new Types.ObjectId(parentId));
+    if (!parent || parent.role !== 'parent') {
+      return res.status(403).json({ success: false, message: 'Access denied. Parent role required.' });
+    }
+
+    const studentRollNumber = (parent as any).studentRollNumber;
+    if (!studentRollNumber) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          hasStudent: false,
+          attendanceRate: 'N/A',
+          coursesCount: 0,
+          feeStatus: 'N/A',
+          notificationsCount: 0,
+          attendanceSummary: [],
+          notifications: []
+        }
+      });
+    }
+
+    const student = await Student.findOne({ 
+      collegeId: new Types.ObjectId(collegeId), 
+      rollNumber: studentRollNumber 
+    });
+
+    if (!student) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          hasStudent: false,
+          rollNumber: studentRollNumber,
+          attendanceRate: 'N/A',
+          coursesCount: 0,
+          feeStatus: 'N/A',
+          notificationsCount: 0,
+          attendanceSummary: [],
+          notifications: []
+        }
+      });
+    }
+
+    const enrolledCoursesCount = student.enrolledCourses?.length || 0;
+    
+    const totalClasses = await ClassSession.countDocuments({
+      collegeId: new Types.ObjectId(collegeId),
+      courseId: { $in: student.enrolledCourses },
+      status: 'completed'
+    });
+
+    const totalAttended = await Attendance.countDocuments({
+      collegeId: new Types.ObjectId(collegeId),
+      studentId: student._id,
+      status: 'present'
+    });
+
+    const rateVal = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 86;
+
+    const courseBreakdown = [];
+    if (student.enrolledCourses && student.enrolledCourses.length > 0) {
+      const enrolledCourses = await Course.find({ _id: { $in: student.enrolledCourses } });
+      for (const course of enrolledCourses) {
+        const total = await ClassSession.countDocuments({
+          collegeId: new Types.ObjectId(collegeId),
+          courseId: course._id,
+          status: 'completed'
+        });
+
+        const attended = await Attendance.countDocuments({
+          collegeId: new Types.ObjectId(collegeId),
+          studentId: student._id,
+          courseId: course._id,
+          status: 'present'
+        });
+
+        courseBreakdown.push({
+          subject: course.title,
+          attended: total > 0 ? attended : 18,
+          total: total > 0 ? total : 20
+        });
+      }
+    } else {
+      courseBreakdown.push(
+        { subject: 'Data Structures', attended: 18, total: 20 },
+        { subject: 'DBMS', attended: 16, total: 20 },
+        { subject: 'Digital Electronics', attended: 17, total: 20 },
+        { subject: 'Eng. Math III', attended: 19, total: 20 }
+      );
+    }
+
+    const unpaidFees = await FeeItem.countDocuments({
+      collegeId: new Types.ObjectId(collegeId),
+      studentId: student._id,
+      status: 'Unpaid'
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        hasStudent: true,
+        studentName: student.name,
+        rollNumber: studentRollNumber,
+        semester: student.semester || 3,
+        attendanceRate: `${rateVal}%`,
+        coursesCount: enrolledCoursesCount || 4,
+        feeStatus: unpaidFees > 0 ? 'Pending' : 'Paid',
+        notificationsCount: 3,
+        attendanceSummary: courseBreakdown,
+        notifications: [
+          { title: 'Fee Payment Reminder', desc: 'Semester 3 fee is due by June 15, 2026', time: '2 hours ago', type: 'warning' },
+          { title: 'Attendance Alert', desc: rateVal < 75 ? `Your child has below 75% (${rateVal}%)` : `Current overall attendance is ${rateVal}%`, time: '1 day ago', type: rateVal < 75 ? 'danger' : 'info' },
+          { title: 'Exam Schedule Released', desc: 'Mid-semester exams start from July 1', time: '3 days ago', type: 'info' }
+        ]
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// STUDENT SETTINGS PREFERENCES
+// ==========================================
+router.get('/student/settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(400).json({ success: false, message: 'Auth context missing' });
+
+    const user = await User.findById(new Types.ObjectId(userId));
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({
+      success: true,
+      data: user.preferences || {
+        pushNotif: true,
+        emailNotif: false,
+        alertShortage: true,
+        lang: 'English',
+        shareLocation: true,
+        profileSearchable: true
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/student/settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(400).json({ success: false, message: 'Auth context missing' });
+
+    const updated = await User.findByIdAndUpdate(
+      new Types.ObjectId(userId),
+      { $set: { preferences: req.body } },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ success: false, message: 'User not found' });
+
+    res.status(200).json({ success: true, message: 'Preferences updated successfully', data: updated.preferences });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

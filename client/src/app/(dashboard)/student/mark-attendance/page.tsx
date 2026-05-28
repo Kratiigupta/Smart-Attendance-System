@@ -83,6 +83,8 @@ export default function StudentMarkAttendancePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [verifiedDetails, setVerifiedDetails] = useState<any>(null);
 
+  const currentSession = activeSessions.find((s) => s._id === scannedSessionId);
+
   // Load active sessions for manual fallback
   const fetchActiveSessions = async () => {
     setSessionsLoading(true);
@@ -104,10 +106,10 @@ export default function StudentMarkAttendancePage() {
   };
 
   useEffect(() => {
-    if (inputMode === 'manual' && currentStep === 'scan') {
+    if (currentStep === 'scan') {
       fetchActiveSessions();
     }
-  }, [inputMode, currentStep]);
+  }, [currentStep]);
 
   // QR scanner lifecycle
   useEffect(() => {
@@ -322,7 +324,7 @@ export default function StudentMarkAttendancePage() {
       if (res.success && res.data) {
         showToast('Smart Check-In Successful!', 'success');
         setVerifiedDetails({
-          course: scannedCourseDetails,
+          course: currentSession?.courseId?.title || scannedCourseDetails,
           time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
           method: snapshot.includes('BYPASSED') ? 'Dynamic QR + Direct Bypass Check-In' : 'Dynamic QR + Secure Face verification',
         });
@@ -416,10 +418,10 @@ export default function StudentMarkAttendancePage() {
       {scannedSessionId && (
         <div className="max-w-md mx-auto">
           <SubjectDetectionCard 
-            courseCode={scannedCourseDetails} 
-            courseTitle={scannedCourseDetails === 'CSC-201' ? 'Data Structures & Algorithms' : scannedCourseDetails === 'CSC-305' ? 'Database Management Systems' : 'Auto-Detected Lecture'}
-            roomName="LH-301"
-            facultyName="Dr. Rajesh Kumar"
+            courseCode={currentSession?.courseId?.code || scannedCourseDetails} 
+            courseTitle={currentSession?.courseId?.title || 'Auto-Detected Lecture'}
+            roomName={currentSession?.roomName || 'LH-301'}
+            facultyName={currentSession?.facultyId?.name || 'Faculty Instructor'}
           />
         </div>
       )}

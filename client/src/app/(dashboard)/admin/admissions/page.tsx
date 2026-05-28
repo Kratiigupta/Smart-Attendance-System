@@ -15,14 +15,8 @@ import {
   HiOutlineUserPlus, HiOutlineMagnifyingGlass, HiOutlineArrowUpTray
 } from 'react-icons/hi2';
 
-const initialApplications = [
-  { id: 1, name: 'Rahul Sharma', email: 'rahul@email.com', programme: 'B.Tech CSE (FYUP)', date: '2026-05-18', status: 'applied' as const, photo: null, marks: '89.4%' },
-  { id: 2, name: 'Priya Singh', email: 'priya@email.com', programme: 'B.Tech ECE (FYUP)', date: '2026-05-17', status: 'reviewing' as const, photo: null, marks: '92.1%' },
-  { id: 3, name: 'Amandeep Kaur', email: 'aman@email.com', programme: 'B.Ed. (ITEP)', date: '2026-05-16', status: 'accepted' as const, photo: null, marks: '78.5%' },
-  { id: 4, name: 'Vikash Kumar', email: 'vikash@email.com', programme: 'B.Tech ME (FYUP)', date: '2026-05-15', status: 'enrolled' as const, photo: null, marks: '85.2%' },
-  { id: 5, name: 'Anjali Verma', email: 'anjali@email.com', programme: 'B.Tech CSE (FYUP)', date: '2026-05-19', status: 'applied' as const, photo: null, marks: '91.8%' },
-  { id: 6, name: 'Mohit Yadav', email: 'mohit@email.com', programme: 'B.Tech CE (FYUP)', date: '2026-05-14', status: 'rejected' as const, photo: null, marks: '58.3%' },
-];
+import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const statusConfig: Record<string, { badge: 'info' | 'warning' | 'success' | 'primary' | 'danger'; icon: string }> = {
   applied: { badge: 'info', icon: '📝' },
@@ -39,9 +33,38 @@ export default function AdminAdmissionsPage() {
   const [activeTab, setActiveTab] = useState('pipeline');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('All');
-  
-  // applications list state
-  const [apps, setApps] = useState(initialApplications);
+  const queryClient = useQueryClient();
+
+  const { data: apps = [], isLoading } = useQuery<any[]>({
+    queryKey: ['admissionsList'],
+    queryFn: async () => {
+      const res = await api.get('/admissions');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch admissions');
+      return res.data || [];
+    }
+  });
+
+  const createAdmissionMutation = useMutation({
+    mutationFn: async (payload: { name: string; email: string; programme: string; marks: string }) => {
+      const res = await api.post('/admissions', payload);
+      if (!res.success) throw new Error(res.message || 'Failed to submit application');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admissionsList'] });
+      showToast('New candidate application registered in ERP pipeline.', 'success');
+      setIsModalOpen(false);
+      // Reset form states
+      setForm({ name: '', email: '', programme: 'B.Tech CSE (FYUP)', marks: '' });
+      setMarksheetUploaded(false);
+      setPhotoUploaded(false);
+      setMarksheetProgress(0);
+      setPhotoProgress(0);
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Failed to submit application', 'error');
+    }
+  });
 
   // New Application Modal Form States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,28 +124,12 @@ export default function AdminAdmissionsPage() {
       return;
     }
 
-    const newApp = {
-      id: apps.length + 1,
+    createAdmissionMutation.mutate({
       name: form.name,
       email: form.email,
       programme: form.programme,
-      date: new Date().toISOString().split('T')[0],
-      status: 'applied' as const,
-      photo: null,
-      marks: `${form.marks}%`,
-    };
-
-    setApps([newApp, ...apps]);
-    setIsModalOpen(false);
-    
-    // Reset form states
-    setForm({ name: '', email: '', programme: 'B.Tech CSE (FYUP)', marks: '' });
-    setMarksheetUploaded(false);
-    setPhotoUploaded(false);
-    setMarksheetProgress(0);
-    setPhotoProgress(0);
-
-    showToast('New candidate application registered in ERP pipeline.', 'success');
+      marks: form.marks,
+    });
   };
 
   // Filters application list based on search and status selects
@@ -135,6 +142,14 @@ export default function AdminAdmissionsPage() {
     
     return matchesSearch && matchesStatus;
   });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading ERP admission applications & pipelines...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">

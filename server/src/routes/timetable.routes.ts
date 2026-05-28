@@ -120,5 +120,161 @@ router.post('/optimize', authenticate, authorize('college_admin'), async (req: A
     next(error);
   }
 });
+router.get('/student', authenticate, authorize('student'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.userId;
+    const collegeId = req.user?.collegeId;
+    if (!userId || !collegeId) {
+      throw { status: 400, message: 'User context is missing.' };
+    }
+
+    const student = await User.findById(userId);
+    if (!student) {
+      throw { status: 404, message: 'Student not found.' };
+    }
+
+    // Auto-enroll student in default courses if empty
+    let enrolledCourseIds = (student as any).enrolledCourses || [];
+    if (enrolledCourseIds.length === 0) {
+      const defaultCourses = await Course.find({ collegeId }).limit(5);
+      (student as any).enrolledCourses = defaultCourses.map(c => c._id);
+      await student.save();
+      enrolledCourseIds = (student as any).enrolledCourses;
+    }
+
+    const courses = await Course.find({ _id: { $in: enrolledCourseIds } });
+    const facultyList = await User.find({ collegeId, role: { $in: ['faculty', 'hod'] } });
+    
+    const slots = [];
+    for (let i = 0; i < courses.length; i++) {
+      const course = courses[i];
+      const faculty = facultyList[i % facultyList.length]?.name || 'Faculty Instructor';
+
+      if (i === 0) {
+        slots.push({
+          id: `${course._id}-1`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-301',
+          faculty,
+          time: '10:00 - 10:50',
+          day: 'Monday',
+          slotNumber: 2
+        });
+        slots.push({
+          id: `${course._id}-2`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-301',
+          faculty,
+          time: '10:00 - 10:50',
+          day: 'Wednesday',
+          slotNumber: 2
+        });
+      } else if (i === 1) {
+        slots.push({
+          id: `${course._id}-1`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Practical',
+          room: 'Lab-101',
+          faculty,
+          time: '11:00 - 11:50',
+          day: 'Monday',
+          slotNumber: 3
+        });
+        slots.push({
+          id: `${course._id}-2`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-301',
+          faculty,
+          time: '11:00 - 11:50',
+          day: 'Thursday',
+          slotNumber: 3
+        });
+      } else if (i === 2) {
+        slots.push({
+          id: `${course._id}-1`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-401',
+          faculty,
+          time: '01:30 - 02:20',
+          day: 'Monday',
+          slotNumber: 5
+        });
+        slots.push({
+          id: `${course._id}-2`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-401',
+          faculty,
+          time: '01:30 - 02:20',
+          day: 'Wednesday',
+          slotNumber: 5
+        });
+      } else if (i === 3) {
+        slots.push({
+          id: `${course._id}-1`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Practical',
+          room: 'Lab-201',
+          faculty,
+          time: '03:30 - 04:20',
+          day: 'Monday',
+          slotNumber: 7
+        });
+        slots.push({
+          id: `${course._id}-2`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-302',
+          faculty,
+          time: '03:30 - 04:20',
+          day: 'Friday',
+          slotNumber: 7
+        });
+      } else {
+        slots.push({
+          id: `${course._id}-1`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Tutorial',
+          room: 'LH-102',
+          faculty,
+          time: '02:30 - 03:20',
+          day: 'Tuesday',
+          slotNumber: 6
+        });
+        slots.push({
+          id: `${course._id}-2`,
+          courseName: course.title,
+          courseCode: course.code,
+          type: 'Lecture',
+          room: 'LH-102',
+          faculty,
+          time: '02:30 - 03:20',
+          day: 'Thursday',
+          slotNumber: 6
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: slots
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

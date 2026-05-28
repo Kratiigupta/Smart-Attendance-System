@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: smartedu-backend
+    env: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+        placeholder: "Paste your MongoDB Atlas connection string here"
+      - key: ACCESS_TOKEN_SECRET
+        generateValue: true
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+        placeholder: "Paste your Vercel frontend URL here (once deployed)"

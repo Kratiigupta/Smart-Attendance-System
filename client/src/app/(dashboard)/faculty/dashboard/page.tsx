@@ -20,10 +20,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
-const weeklyAttendanceData = [
-  { name: 'Mon', rate: 94 }, { name: 'Tue', rate: 91 }, { name: 'Wed', rate: 88 },
-  { name: 'Thu', rate: 93 }, { name: 'Fri', rate: 86 }, { name: 'Sat', rate: 82 },
-];
 
 const statusColors: Record<string, { text: string; badge: 'success' | 'primary' | 'default' | 'warning' }> = {
   completed: { text: 'Completed', badge: 'success' },
@@ -107,6 +103,7 @@ export default function FacultyDashboard() {
   const totalStudents = analytics?.totalStudents ?? 0;
   const avgAttendance = analytics?.avgAttendance ?? '90.2%';
   const engagementScore = analytics?.engagementScore ?? 88;
+  const weeklyAttendanceData = analytics?.weeklyAttendanceData ?? [];
 
   // Process weak students list based on search, filter, and sort order
   const processedStudents = weakStudents

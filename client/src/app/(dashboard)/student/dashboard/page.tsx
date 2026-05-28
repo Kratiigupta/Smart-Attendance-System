@@ -26,13 +26,6 @@ import { StatsSkeleton, CardSkeleton } from '@/components/ui/AttendanceSkeleton'
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
-const todaySchedule = [
-  { time: '10:00 AM', course: 'Data Structures', code: 'CSC-201', faculty: 'Dr. Rajesh', room: 'LH-301', type: 'Lecture', status: 'completed' },
-  { time: '11:00 AM', course: 'DS Lab', code: 'CSC-201P', faculty: 'Dr. Rajesh', room: 'Lab-101', type: 'Practical', status: 'active' },
-  { time: '01:30 PM', course: 'DBMS', code: 'CSC-305', faculty: 'Dr. Neha', room: 'LH-401', type: 'Lecture', status: 'upcoming' },
-  { time: '03:30 PM', course: 'Web Dev Lab', code: 'SEC-201', faculty: 'Prof. Rahul', room: 'Lab-201', type: 'Practical', status: 'upcoming' },
-];
-
 const freePeriodSuggestions = [
   { icon: '🎥', title: 'Watch DSA Video', subject: 'Trees & Graphs', duration: '15 min', type: 'Video' },
   { icon: '📝', title: 'Practice Quiz', subject: 'SQL Normalization & Indexing', duration: '10 min', type: 'Quiz' },
@@ -54,6 +47,16 @@ export default function StudentDashboard() {
     }
   });
 
+  // Fetch real timetable
+  const { data: timetable = [], isLoading: timetableLoading } = useQuery<any[]>({
+    queryKey: ['studentTimetable'],
+    queryFn: async () => {
+      const res = await api.get('/timetable/student');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch timetable');
+      return res.data || [];
+    }
+  });
+
   const studentName = user?.name || 'Amit Kumar';
   const semester = user?.studentData?.semester ? `Sem-${user.studentData.semester}` : 'Sem-3';
   const deptCode = user?.studentData?.department?.code || 'CSE';
@@ -68,7 +71,31 @@ export default function StudentDashboard() {
     setShowIdCard(false);
   };
 
-  if (analyticsLoading) {
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const currentDayIndex = new Date().getDay();
+  const queryDay = currentDayIndex === 0 ? 'Monday' : daysOfWeek[currentDayIndex];
+
+  const todaySlots = timetable.filter((slot: any) => slot.day === queryDay);
+
+  const todaySchedule = todaySlots.length > 0 ? todaySlots.map((slot: any, idx: number) => {
+    let status = 'upcoming';
+    if (idx === 0) status = 'completed';
+    else if (idx === 1) status = 'active';
+
+    return {
+      time: slot.time,
+      course: slot.courseName,
+      code: slot.courseCode,
+      faculty: slot.faculty,
+      room: slot.room,
+      type: slot.type,
+      status
+    };
+  }) : [
+    { time: '10:00 AM', course: 'No classes scheduled today', code: 'FREE', faculty: '-', room: '-', type: 'Lecture' as const, status: 'completed' }
+  ];
+
+  if (analyticsLoading || timetableLoading) {
     return (
       <div className="space-y-6 animate-fadeIn">
         <div className="space-y-2">

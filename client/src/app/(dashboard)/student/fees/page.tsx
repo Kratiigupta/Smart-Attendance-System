@@ -18,6 +18,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { jsPDF } from 'jspdf';
+import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface FeeItem {
   id: string;
@@ -38,23 +40,65 @@ interface Transaction {
   status: 'Success' | 'Pending';
 }
 
-const mockFeeLedger: FeeItem[] = [
-  { id: '1', name: 'Tuition Fee (Semester 3)', category: 'Academic', amount: 40000, status: 'Paid', dueDate: '2026-04-15' },
-  { id: '2', name: 'Library Fee', category: 'Facilities', amount: 2000, status: 'Paid', dueDate: '2026-04-15' },
-  { id: '3', name: 'Computer Lab Fee', category: 'Facilities', amount: 6000, status: 'Paid', dueDate: '2026-04-15' },
-  { id: '4', name: 'Exam Fee (Semester 3)', category: 'Academic', amount: 2500, status: 'Unpaid', dueDate: '2026-06-15' },
-  { id: '5', name: 'Hostel & Mess Charges (Semester 3)', category: 'Hostel', amount: 22000, status: 'Unpaid', dueDate: '2026-06-15' },
-];
-
-const mockTransactions: Transaction[] = [
-  { id: 't1', transactionId: 'TXN88294710', amount: 48000, method: 'UPI / NetBanking', date: '2026-04-10', receiptNo: 'REC-2026-0921', status: 'Success' },
-];
-
 export default function StudentFees() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [ledger, setLedger] = useState<FeeItem[]>(mockFeeLedger);
-  const [transactions, setTransactions] = useState<Transaction[]>(mockTransactions);
+  const queryClient = useQueryClient();
+
+  const { data: ledger = [], isLoading: ledgerLoading } = useQuery<FeeItem[]>({
+    queryKey: ['feesLedger'],
+    queryFn: async () => {
+      const res = await api.get('/fees/ledger');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch ledger');
+      return (res.data || []).map((item: any) => ({
+        id: item._id || item.id,
+        name: item.name,
+        category: item.category,
+        amount: item.amount,
+        status: item.status,
+        dueDate: item.dueDate
+      }));
+    }
+  });
+
+  const { data: transactions = [], isLoading: txnsLoading } = useQuery<Transaction[]>({
+    queryKey: ['feesTransactions'],
+    queryFn: async () => {
+      const res = await api.get('/fees/transactions');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch transactions');
+      return (res.data || []).map((item: any) => ({
+        id: item._id || item.id,
+        transactionId: item.transactionId,
+        amount: item.amount,
+        method: item.method,
+        date: item.date,
+        receiptNo: item.receiptNo,
+        status: item.status
+      }));
+    }
+  });
+
+
+
+
+
+  const payMutation = useMutation({
+    mutationFn: async ({ method, amount }: { method: string; amount: number }) => {
+      const res = await api.post('/fees/pay', { method, amount });
+      if (!res.success) throw new Error(res.message || 'Failed to process payment');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feesLedger'] });
+      queryClient.invalidateQueries({ queryKey: ['feesTransactions'] });
+      showToast('Payment completed successfully!', 'success');
+      setPaymentStep(3);
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Payment failed', 'error');
+    }
+  });
+
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
@@ -120,7 +164,7 @@ export default function StudentFees() {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [paymentStep, setPaymentStep] = useState<1 | 2 | 3>(1);
   const [paymentMethod, setPaymentMethod] = useState('');
-  const [isPaying, setIsPaying] = useState(false);
+  const isPaying = payMutation.isPending;
 
   const unpaidItems = ledger.filter((item) => item.status === 'Unpaid');
   const totalDue = unpaidItems.reduce((acc, curr) => acc + curr.amount, 0);
@@ -139,35 +183,12 @@ export default function StudentFees() {
   const handleProceedPayment = () => {
     if (paymentStep === 1) {
       if (!paymentMethod) {
-        alert('Please select a payment method');
+        showToast('Please select a payment method', 'warning');
         return;
       }
       setPaymentStep(2);
     } else if (paymentStep === 2) {
-      setIsPaying(true);
-      setTimeout(() => {
-        setIsPaying(false);
-        setPaymentStep(3);
-
-        // Update ledger items to Paid status
-        const updatedLedger = ledger.map((item) => ({
-          ...item,
-          status: 'Paid' as const,
-        }));
-        setLedger(updatedLedger);
-
-        // Append new transaction
-        const newTxn: Transaction = {
-          id: `t${transactions.length + 1}`,
-          transactionId: `TXN${Math.floor(10000000 + Math.random() * 90000000)}`,
-          amount: totalDue,
-          method: paymentMethod,
-          date: new Date().toISOString().split('T')[0],
-          receiptNo: `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-          status: 'Success',
-        };
-        setTransactions([newTxn, ...transactions]);
-      }, 2000);
+      payMutation.mutate({ method: paymentMethod, amount: totalDue });
     }
   };
 
@@ -256,6 +277,14 @@ export default function StudentFees() {
       ),
     },
   ];
+
+  if (ledgerLoading || txnsLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading fee ledger & secure payment history...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">

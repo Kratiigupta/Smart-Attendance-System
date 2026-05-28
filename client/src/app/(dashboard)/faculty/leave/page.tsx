@@ -10,16 +10,17 @@ import { DataTable } from '@/components/ui/DataTable';
 import {
   HiOutlineClipboardDocumentList,
   HiOutlineCalendar,
-  HiOutlineClock,
-  HiOutlineUser,
-  HiOutlinePlus,
   HiOutlineCheckCircle,
   HiOutlineXCircle,
   HiOutlineClock as HiOutlinePendingClock,
+  HiOutlinePlus
 } from 'react-icons/hi2';
+import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/components/ui/Toast';
 
 interface LeaveRequest {
-  id: string;
+  _id: string;
   leaveType: string;
   startDate: string;
   endDate: string;
@@ -29,14 +30,9 @@ interface LeaveRequest {
   appliedDate: string;
 }
 
-const initialLeaves: LeaveRequest[] = [
-  { id: '1', leaveType: 'Casual Leave', startDate: '2026-06-02', endDate: '2026-06-03', reason: 'Personal family business in Delhi.', proxyFaculty: 'Dr. Amit Sharma', status: 'Approved', appliedDate: '2026-05-15' },
-  { id: '2', leaveType: 'Sick Leave', startDate: '2026-05-10', endDate: '2026-05-11', reason: 'Viral fever, doctor advised bed rest.', proxyFaculty: 'Dr. Sunita Verma', status: 'Approved', appliedDate: '2026-05-09' },
-  { id: '3', leaveType: 'Duty Leave', startDate: '2026-05-28', endDate: '2026-05-28', reason: 'Attending National Seminar on AI in Education.', proxyFaculty: 'Prof. Vikram Malhotra', status: 'Pending', appliedDate: '2026-05-20' },
-];
-
 export default function FacultyLeave() {
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(initialLeaves);
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveRequest | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -49,26 +45,49 @@ export default function FacultyLeave() {
     proxyFaculty: '',
   });
 
+  // Query leaves
+  const { data: leaves = [], isLoading } = useQuery<LeaveRequest[]>({
+    queryKey: ['facultyLeaves'],
+    queryFn: async () => {
+      const res = await api.get('/leaves');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch leaves');
+      return res.data || [];
+    }
+  });
+
+  // Add leave mutation
+  const applyLeaveMutation = useMutation({
+    mutationFn: async (body: any) => {
+      const res = await api.post('/leaves', body);
+      if (!res.success) throw new Error(res.message || 'Submission failed');
+      return res.data;
+    },
+    onSuccess: () => {
+      showToast('Leave application submitted successfully!', 'success');
+      setIsApplyModalOpen(false);
+      setFormData({
+        leaveType: 'Casual Leave',
+        startDate: '',
+        endDate: '',
+        reason: '',
+        proxyFaculty: '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['facultyLeaves'] });
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Failed to submit application.', 'error');
+    }
+  });
+
   const handleApplySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newLeave: LeaveRequest = {
-      id: String(leaves.length + 1),
-      leaveType: formData.leaveType,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      reason: formData.reason,
-      proxyFaculty: formData.proxyFaculty || 'None Assigned',
-      status: 'Pending',
-      appliedDate: new Date().toISOString().split('T')[0],
-    };
-    setLeaves([newLeave, ...leaves]);
-    setIsApplyModalOpen(false);
-    setFormData({
-      leaveType: 'Casual Leave',
-      startDate: '',
-      endDate: '',
-      reason: '',
-      proxyFaculty: '',
+    if (!formData.startDate || !formData.endDate || !formData.reason.trim()) {
+      showToast('Please fill all required fields.', 'warning');
+      return;
+    }
+    applyLeaveMutation.mutate({
+      ...formData,
+      proxyFaculty: formData.proxyFaculty || 'None Assigned'
     });
   };
 
@@ -89,7 +108,7 @@ export default function FacultyLeave() {
       accessor: (row: LeaveRequest) => (
         <div>
           <div className="text-xs font-bold text-text-primary">{row.leaveType}</div>
-          <div className="text-[9px] text-text-dim">Applied on {row.appliedDate}</div>
+          <div className="text-[9px] text-text-dim font-mono">Applied on {row.appliedDate}</div>
         </div>
       ),
     },
@@ -131,6 +150,14 @@ export default function FacultyLeave() {
   const approvedCount = leaves.filter((l) => l.status === 'Approved').length;
   const pendingCount = leaves.filter((l) => l.status === 'Pending').length;
   const remainingCasualBalance = 15 - leaves.filter((l) => l.leaveType === 'Casual Leave' && l.status === 'Approved').length;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading leave application history & balances...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -261,7 +288,7 @@ export default function FacultyLeave() {
             <Button variant="outline" size="sm" type="button" onClick={() => setIsApplyModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" type="submit">
+            <Button variant="primary" size="sm" type="submit" loading={applyLeaveMutation.isPending}>
               Submit Application
             </Button>
           </div>

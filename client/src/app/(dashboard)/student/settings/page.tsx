@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   HiOutlineCog6Tooth, HiOutlineBell, HiOutlineLockClosed,
   HiOutlineGlobeAlt, HiOutlineShieldCheck, HiOutlineEye,
@@ -13,22 +15,76 @@ import {
 
 export default function StudentSettingsPage() {
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
   
-  // Notification states
-  const [pushNotif, setPushNotif] = useState(true);
-  const [emailNotif, setEmailNotif] = useState(false);
-  const [alertShortage, setAlertShortage] = useState(true);
+  // Preference states
+  const [preferences, setPreferences] = useState({
+    pushNotif: true,
+    emailNotif: false,
+    alertShortage: true,
+    lang: 'English',
+    shareLocation: true,
+    profileSearchable: true
+  });
 
-  // Language state
-  const [lang, setLang] = useState('English');
+  // Query preferences
+  const { data: serverPref, isLoading } = useQuery<any>({
+    queryKey: ['studentSettings'],
+    queryFn: async () => {
+      const res = await api.get('/student/settings');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch preferences');
+      return res.data;
+    }
+  });
 
-  // Privacy states
-  const [shareLocation, setShareLocation] = useState(true);
-  const [profileSearchable, setProfileSearchable] = useState(true);
+  // Sync state with server values
+  useEffect(() => {
+    if (serverPref) {
+      setPreferences({
+        pushNotif: serverPref.pushNotif ?? true,
+        emailNotif: serverPref.emailNotif ?? false,
+        alertShortage: serverPref.alertShortage ?? true,
+        lang: serverPref.lang ?? 'English',
+        shareLocation: serverPref.shareLocation ?? true,
+        profileSearchable: serverPref.profileSearchable ?? true
+      });
+    }
+  }, [serverPref]);
+
+  // Save settings mutation
+  const savePrefMutation = useMutation({
+    mutationFn: async (body: typeof preferences) => {
+      const res = await api.put('/student/settings', body);
+      if (!res.success) throw new Error(res.message || 'Update failed');
+      return res.data;
+    },
+    onSuccess: () => {
+      showToast('Preferences updated and synced successfully.', 'success');
+      queryClient.invalidateQueries({ queryKey: ['studentSettings'] });
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Failed to save preferences.', 'error');
+    }
+  });
 
   const handleSaveSettings = () => {
-    showToast('Preferences updated and synced successfully.', 'success');
+    savePrefMutation.mutate(preferences);
   };
+
+  const togglePref = (key: keyof typeof preferences) => {
+    setPreferences(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading account configurations & preferences...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
@@ -47,6 +103,7 @@ export default function StudentSettingsPage() {
           variant="primary"
           size="sm"
           onClick={handleSaveSettings}
+          loading={savePrefMutation.isPending}
           className="shadow-md shadow-primary/20 text-xs font-bold"
         >
           Save Preferences
@@ -66,8 +123,8 @@ export default function StudentSettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={pushNotif}
-                onChange={() => setPushNotif(!pushNotif)}
+                checked={preferences.pushNotif}
+                onChange={() => togglePref('pushNotif')}
                 className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input"
               />
             </div>
@@ -79,8 +136,8 @@ export default function StudentSettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={alertShortage}
-                onChange={() => setAlertShortage(!alertShortage)}
+                checked={preferences.alertShortage}
+                onChange={() => togglePref('alertShortage')}
                 className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input"
               />
             </div>
@@ -92,8 +149,8 @@ export default function StudentSettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={emailNotif}
-                onChange={() => setEmailNotif(!emailNotif)}
+                checked={preferences.emailNotif}
+                onChange={() => togglePref('emailNotif')}
                 className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input"
               />
             </div>
@@ -125,10 +182,10 @@ export default function StudentSettingsPage() {
                 <p className="text-[10px] text-text-muted">Will apply to sidebar menus and lesson card subtitles.</p>
               </div>
               <select
-                value={lang}
+                value={preferences.lang}
                 onChange={(e) => {
-                  setLang(e.target.value);
-                  showToast(`Language switched to ${e.target.value}.`, 'success');
+                  setPreferences(prev => ({ ...prev, lang: e.target.value }));
+                  showToast(`Language preference changed to ${e.target.value}. Don't forget to save.`, 'info');
                 }}
                 className="bg-bg-input border border-border/40 rounded-xl text-xs font-bold text-text-secondary px-3 py-2 focus:border-primary/40 focus:outline-none cursor-pointer"
               >
@@ -157,8 +214,8 @@ export default function StudentSettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={shareLocation}
-                onChange={() => setShareLocation(!shareLocation)}
+                checked={preferences.shareLocation}
+                onChange={() => togglePref('shareLocation')}
                 className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input shrink-0 mt-1"
               />
             </div>
@@ -175,8 +232,8 @@ export default function StudentSettingsPage() {
               </div>
               <input
                 type="checkbox"
-                checked={profileSearchable}
-                onChange={() => setProfileSearchable(!profileSearchable)}
+                checked={preferences.profileSearchable}
+                onChange={() => togglePref('profileSearchable')}
                 className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input shrink-0 mt-1"
               />
             </div>

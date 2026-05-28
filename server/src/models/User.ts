@@ -12,6 +12,14 @@ export interface IUser extends Document {
   department?: Types.ObjectId;
   semester?: number;
   isActive: boolean;
+  preferences?: {
+    pushNotif: boolean;
+    emailNotif: boolean;
+    alertShortage: boolean;
+    lang: string;
+    shareLocation: boolean;
+    profileSearchable: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,7 +62,15 @@ const userSchema = new Schema<IUser>(
     profileImage: { type: String },
     department: { type: Schema.Types.ObjectId, ref: 'Department' },
     semester: { type: Number, min: 1, max: 8 },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true },
+    preferences: {
+      pushNotif: { type: Boolean, default: true },
+      emailNotif: { type: Boolean, default: false },
+      alertShortage: { type: Boolean, default: true },
+      lang: { type: String, default: 'English' },
+      shareLocation: { type: Boolean, default: true },
+      profileSearchable: { type: Boolean, default: true }
+    }
   },
   {
     discriminatorKey: 'userType',

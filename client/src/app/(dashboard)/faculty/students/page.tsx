@@ -30,20 +30,19 @@ interface StudentRecord {
   phone: string;
 }
 
-const mockStudents: StudentRecord[] = [
-  { id: '1', name: 'Aarav Mehta', email: 'aarav.mehta@school.edu', rollNo: 'CSE-2022-01', course: 'Data Structures', attendance: 88, classesAttended: 22, totalClasses: 25, phone: '+91 98765 43210' },
-  { id: '2', name: 'Ishita Sharma', email: 'ishita.s@school.edu', rollNo: 'CSE-2022-12', course: 'Data Structures', attendance: 71, classesAttended: 17, totalClasses: 24, phone: '+91 87654 32109' },
-  { id: '3', name: 'Kabir Singh', email: 'kabir.singh@school.edu', rollNo: 'CSE-2020-25', course: 'Algorithm Design', attendance: 95, classesAttended: 19, totalClasses: 20, phone: '+91 76543 21098' },
-  { id: '4', name: 'Rohan Gupta', email: 'rohan.g@school.edu', rollNo: 'CSE-2022-34', course: 'Data Structures', attendance: 64, classesAttended: 16, totalClasses: 25, phone: '+91 65432 10987' },
-  { id: '5', name: 'Priya Patel', email: 'priya.patel@school.edu', rollNo: 'CSE-2022-45', course: 'Data Structures Lab', attendance: 91, classesAttended: 11, totalClasses: 12, phone: '+91 99887 76655' },
-  { id: '6', name: 'Neha Reddy', email: 'neha.reddy@school.edu', rollNo: 'CSE-2022-22', course: 'Data Structures Lab', attendance: 83, classesAttended: 10, totalClasses: 12, phone: '+91 88776 65544' },
-  { id: '7', name: 'Aditya Sen', email: 'aditya.sen@school.edu', rollNo: 'CSE-2020-03', course: 'Algorithm Design', attendance: 75, classesAttended: 15, totalClasses: 20, phone: '+91 77665 54433' },
-  { id: '8', name: 'Divya Khurana', email: 'divya.k@school.edu', rollNo: 'CSE-2022-09', course: 'Data Structures', attendance: 79, classesAttended: 19, totalClasses: 24, phone: '+91 91234 56789' },
-  { id: '9', name: 'Manish Verma', email: 'manish.v@school.edu', rollNo: 'CSE-2020-15', course: 'Algorithm Design', attendance: 58, classesAttended: 11, totalClasses: 19, phone: '+91 98123 45678' },
-  { id: '10', name: 'Siddharth Roy', email: 'sid.roy@school.edu', rollNo: 'CSE-2022-41', course: 'Data Structures Lab', attendance: 100, classesAttended: 12, totalClasses: 12, phone: '+91 97123 45678' },
-];
+import { api } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 export default function FacultyStudents() {
+  const { data: mockStudents = [], isLoading } = useQuery<StudentRecord[]>({
+    queryKey: ['facultyStudents'],
+    queryFn: async () => {
+      const res = await api.get('/faculty/students');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch faculty students');
+      return res.data || [];
+    }
+  });
+
   const [selectedCourse, setSelectedCourse] = useState<string>('All');
   const [attendanceFilter, setAttendanceFilter] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -53,6 +52,14 @@ export default function FacultyStudents() {
   const [alertMessage, setAlertMessage] = useState('Your attendance is currently below the required 75% threshold. Please meet Dr. Rajesh Kumar as soon as possible to discuss.');
 
   const courses = ['All', 'Data Structures', 'Data Structures Lab', 'Algorithm Design'];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading enrolled students & class attendance metrics...
+      </div>
+    );
+  }
 
   const filteredStudents = mockStudents.filter((student) => {
     const matchesCourse = selectedCourse === 'All' || student.course === selectedCourse;
@@ -161,9 +168,9 @@ export default function FacultyStudents() {
   // Stats calculations
   const totalEnrolled = mockStudents.length;
   const criticalCount = mockStudents.filter((s) => s.attendance < 75).length;
-  const averageAttendance = Math.round(
+  const averageAttendance = totalEnrolled > 0 ? Math.round(
     mockStudents.reduce((acc, s) => acc + s.attendance, 0) / totalEnrolled
-  );
+  ) : 0;
 
   return (
     <div className="space-y-6 animate-fadeIn">

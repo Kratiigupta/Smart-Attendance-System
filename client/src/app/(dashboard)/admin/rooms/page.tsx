@@ -6,19 +6,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { StatCard } from '@/components/ui/StatCard';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 import { HiOutlineHomeModern, HiOutlinePlus, HiOutlineWifi, HiOutlineSignal } from 'react-icons/hi2';
-
-const rooms = [
-  { id: 1, name: 'LH-101', building: 'Main Block', floor: 'Ground', capacity: 60, type: 'Lecture Hall', status: 'occupied', currentClass: 'Eng. Math III', occupancy: 55, hasWifi: true, hasProjector: true },
-  { id: 2, name: 'LH-102', building: 'Main Block', floor: 'Ground', capacity: 60, type: 'Lecture Hall', status: 'available', currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true },
-  { id: 3, name: 'LH-201', building: 'Main Block', floor: '1st', capacity: 80, type: 'Lecture Hall', status: 'occupied', currentClass: 'Digital Electronics', occupancy: 42, hasWifi: true, hasProjector: true },
-  { id: 4, name: 'LH-301', building: 'Main Block', floor: '2nd', capacity: 50, type: 'Lecture Hall', status: 'occupied', currentClass: 'Data Structures', occupancy: 45, hasWifi: true, hasProjector: true },
-  { id: 5, name: 'LH-401', building: 'Science Block', floor: '3rd', capacity: 50, type: 'Lecture Hall', status: 'maintenance', currentClass: null, occupancy: 0, hasWifi: false, hasProjector: true },
-  { id: 6, name: 'Lab-101', building: 'CS Block', floor: 'Ground', capacity: 40, type: 'Computer Lab', status: 'available', currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true },
-  { id: 7, name: 'Lab-201', building: 'CS Block', floor: '1st', capacity: 35, type: 'Computer Lab', status: 'occupied', currentClass: 'Web Dev Lab', occupancy: 32, hasWifi: true, hasProjector: false },
-  { id: 8, name: 'Lab-301', building: 'ECE Block', floor: '2nd', capacity: 30, type: 'Electronics Lab', status: 'available', currentClass: null, occupancy: 0, hasWifi: true, hasProjector: false },
-  { id: 9, name: 'Seminar Hall', building: 'Admin Block', floor: '1st', capacity: 200, type: 'Seminar Hall', status: 'available', currentClass: null, occupancy: 0, hasWifi: true, hasProjector: true },
-];
+import { api } from '@/lib/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/components/ui/Toast';
 
 const statusColors: Record<string, { badge: 'success' | 'danger' | 'warning' | 'default'; dot: string }> = {
   available: { badge: 'success', dot: 'bg-success' },
@@ -27,8 +20,78 @@ const statusColors: Record<string, { badge: 'success' | 'danger' | 'warning' | '
 };
 
 export default function AdminRoomsPage() {
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState('all');
+  const [addOpen, setAddOpen] = useState(false);
+  
+  // Add room form state
+  const [formData, setFormData] = useState({
+    name: '',
+    building: 'Main Block',
+    floor: 'Ground',
+    capacity: '60',
+    type: 'Lecture Hall',
+    hasWifi: true,
+    hasProjector: true
+  });
+
+  // Query rooms
+  const { data: rooms = [], isLoading } = useQuery<any[]>({
+    queryKey: ['adminRooms'],
+    queryFn: async () => {
+      const res = await api.get('/rooms');
+      if (!res.success) throw new Error(res.message || 'Failed to fetch rooms');
+      return res.data || [];
+    }
+  });
+
+  // Add room mutation
+  const addRoomMutation = useMutation({
+    mutationFn: async (body: any) => {
+      const res = await api.post('/rooms', body);
+      if (!res.success) throw new Error(res.message || 'Creation failed');
+      return res.data;
+    },
+    onSuccess: () => {
+      showToast('Room created successfully!', 'success');
+      setAddOpen(false);
+      setFormData({
+        name: '',
+        building: 'Main Block',
+        floor: 'Ground',
+        capacity: '60',
+        type: 'Lecture Hall',
+        hasWifi: true,
+        hasProjector: true
+      });
+      queryClient.invalidateQueries({ queryKey: ['adminRooms'] });
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Failed to create room.', 'error');
+    }
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim()) return;
+    addRoomMutation.mutate({
+      ...formData,
+      capacity: parseInt(formData.capacity, 10),
+      status: 'available',
+      occupancy: 0
+    });
+  };
+
   const filtered = filter === 'all' ? rooms : rooms.filter(r => r.status === filter);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 py-12 text-center text-xs text-text-muted animate-pulse">
+        🔄 Loading classrooms, labs & seminar halls...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -40,7 +103,9 @@ export default function AdminRoomsPage() {
           </h1>
           <p className="text-xs text-text-muted mt-0.5">Classroom, lab & seminar hall management</p>
         </div>
-        <Button variant="primary" size="sm" icon={<HiOutlinePlus className="w-3.5 h-3.5" />}>Add Room</Button>
+        <Button variant="primary" size="sm" icon={<HiOutlinePlus className="w-3.5 h-3.5" />} onClick={() => setAddOpen(true)}>
+          Add Room
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
@@ -61,7 +126,7 @@ export default function AdminRoomsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
         {filtered.map(room => (
-          <Card key={room.id} className="group hover:border-border-light">
+          <Card key={room._id} className="group hover:border-border-light">
             <div className="flex items-start justify-between mb-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -94,6 +159,97 @@ export default function AdminRoomsPage() {
           </Card>
         ))}
       </div>
+
+      {/* Add Room Modal */}
+      <Modal
+        isOpen={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add Academic Room"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button form="add-room-form" type="submit" loading={addRoomMutation.isPending}>
+              Create Room
+            </Button>
+          </>
+        }
+      >
+        <form id="add-room-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Input
+            label="Room Name"
+            id="name"
+            placeholder="e.g. LH-103, Lab-402"
+            value={formData.name}
+            onChange={(e: any) => setFormData(p => ({ ...p, name: e.target.value }))}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Building"
+              id="building"
+              value={formData.building}
+              onChange={(e: any) => setFormData(p => ({ ...p, building: e.target.value }))}
+              required
+            />
+            <Input
+              label="Floor"
+              id="floor"
+              placeholder="e.g. Ground, 1st"
+              value={formData.floor}
+              onChange={(e: any) => setFormData(p => ({ ...p, floor: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Seat Capacity"
+              id="capacity"
+              type="number"
+              min="1"
+              value={formData.capacity}
+              onChange={(e: any) => setFormData(p => ({ ...p, capacity: e.target.value }))}
+              required
+            />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Room Type</label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData(p => ({ ...p, type: e.target.value }))}
+                className="w-full bg-bg-input border border-border/40 rounded-xl text-xs font-semibold text-text-secondary px-3 py-2.5 focus:border-primary/45 focus:outline-none"
+              >
+                <option value="Lecture Hall">Lecture Hall</option>
+                <option value="Computer Lab">Computer Lab</option>
+                <option value="Electronics Lab">Electronics Lab</option>
+                <option value="Seminar Hall">Seminar Hall</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-6 border-t border-border pt-4 mt-2">
+            <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.hasWifi}
+                onChange={(e) => setFormData(p => ({ ...p, hasWifi: e.target.checked }))}
+                className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input"
+              />
+              <span>Wi-Fi Enabled</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs font-bold text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.hasProjector}
+                onChange={(e) => setFormData(p => ({ ...p, hasProjector: e.target.checked }))}
+                className="w-4 h-4 rounded text-primary focus:ring-primary border-border cursor-pointer bg-bg-input"
+              />
+              <span>Projector Configured</span>
+            </label>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
