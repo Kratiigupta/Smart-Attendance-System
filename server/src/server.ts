@@ -16,23 +16,38 @@ connectDB();
 const app = express();
 const httpServer = createServer(app);
 
+// CORS dynamic origin helper
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean | string) => void) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    const isAllowed = 
+      origin === env.FRONTEND_URL ||
+      origin.endsWith('.vercel.app') ||
+      /^http:\/\/localhost:\d+$/.test(origin);
+    
+    if (isAllowed) {
+      callback(null, origin);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH']
+};
+
 // Socket.io initialization
 const io = new Server(httpServer, {
-  cors: {
-    origin: env.FRONTEND_URL,
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
+  cors: corsOptions
 });
 
 // Middleware stack
 app.use(helmet({
   crossOriginResourcePolicy: false // Allow images/assets loading from backend if needed
 }));
-app.use(cors({
-  origin: env.FRONTEND_URL,
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
