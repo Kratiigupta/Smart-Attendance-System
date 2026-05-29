@@ -50,6 +50,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
+  const logout = async () => {
+    setIsLoading(true);
+    try {
+      await api.post('/auth/logout', {});
+    } catch (err) {
+      console.error('Logout request failed:', err);
+    } finally {
+      localStorage.removeItem('accessToken');
+      setUser(null);
+      setAccessToken(null);
+      setIsLoading(false);
+      router.push('/login');
+    }
+  };
+
+
   // Process logout on custom event (triggered by API client on session expire)
   useEffect(() => {
     const handleLogoutEvent = () => {
@@ -166,20 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
-    setIsLoading(true);
-    try {
-      await api.post('/auth/logout', {});
-    } catch (err) {
-      console.error('Logout request failed:', err);
-    } finally {
-      localStorage.removeItem('accessToken');
-      setUser(null);
-      setAccessToken(null);
-      setIsLoading(false);
-      router.push('/login');
-    }
-  };
+
 
   const refreshProfile = async () => {
     const token = accessToken || localStorage.getItem('accessToken');
