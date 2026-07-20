@@ -450,7 +450,7 @@ export default function DashboardLayout({
                     <button
                       onClick={() => {
                         setIsNotificationsOpen(false);
-                        const notifPath = user.role === 'student' ? '/student/notifications' : user.role === 'faculty' || user.role === 'hod' ? '/faculty/dashboard' : '/admin/dashboard';
+                        const notifPath = user.role === 'student' ? '/student/notifications' : user.role === 'parent' ? '/parent/notifications' : user.role === 'faculty' || user.role === 'hod' ? '/faculty/dashboard' : '/admin/dashboard';
                         router.push(notifPath);
                       }}
                       className="text-[10px] font-bold text-text-secondary hover:text-text-primary transition-colors inline-block w-full py-1 cursor-pointer"
