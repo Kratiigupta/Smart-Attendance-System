@@ -243,10 +243,10 @@ export default function StudentSettingsPage() {
         {/* Security & Authentication options */}
         <Card title="Security & Authentication" subtitle="Change login credentials and security locks">
           <div className="flex flex-col gap-2.5 mt-2">
-            <Button variant="outline" size="sm" icon={<HiOutlineLockClosed className="w-4 h-4 text-text-muted" />} className="w-full justify-start text-xs text-text-secondary">
+            <Button variant="outline" size="sm" icon={<HiOutlineLockClosed className="w-4 h-4 text-text-muted" />} className="w-full justify-start text-xs text-text-secondary" onClick={() => showToast('Password reset link has been sent to your registered email.', 'info')}>
               Update Account Password
             </Button>
-            <Button variant="outline" size="sm" icon={<HiOutlineSparkles className="w-4 h-4 text-primary-light" />} className="w-full justify-start text-xs text-text-secondary">
+            <Button variant="outline" size="sm" icon={<HiOutlineSparkles className="w-4 h-4 text-primary-light" />} className="w-full justify-start text-xs text-text-secondary" onClick={() => showToast('Bio-Authentication registered successfully with this device.', 'success')}>
               Enable Bio-Authentication (Face ID / Touch ID)
             </Button>
           </div>

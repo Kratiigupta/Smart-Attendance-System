@@ -60,6 +60,7 @@ const facultyNavItems: NavItem[] = [
 
 const studentNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/student/dashboard', icon: HiOutlineHome },
+  { label: 'Mark Attendance', href: '/student/mark-attendance', icon: HiOutlineQrCode, badge: 'Scan' },
   { label: 'Attendance', href: '/student/attendance', icon: HiOutlineClipboardDocumentCheck },
   { label: 'Timetable', href: '/student/timetable', icon: HiOutlineCalendarDays },
   { label: 'Assignments', href: '/student/assignments', icon: HiOutlineClipboardDocumentList },
@@ -100,9 +101,10 @@ function getNavItems(role?: string): NavItem[] {
 interface SidebarProps {
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
+  isCollapsed?: boolean;
 }
 
-export function Sidebar({ mobileOpen, setMobileOpen }: SidebarProps) {
+export function Sidebar({ mobileOpen, setMobileOpen, isCollapsed = false }: SidebarProps) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const navItems = getNavItems(user?.role);
@@ -196,7 +198,7 @@ export function Sidebar({ mobileOpen, setMobileOpen }: SidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex fixed top-0 left-0 bottom-0 w-64 bg-bg-secondary border-r border-border/40 z-40 flex-col">
+      <aside className={`hidden md:flex fixed top-0 left-0 bottom-0 w-64 bg-bg-secondary border-r border-border/40 z-40 flex-col transition-transform duration-300 ${isCollapsed ? '-translate-x-full' : 'translate-x-0'}`}>
         {sidebarContent}
       </aside>
 

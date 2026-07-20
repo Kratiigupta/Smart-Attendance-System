@@ -1,11 +1,14 @@
 import { Response, NextFunction } from 'express';
-import { registerSchema, loginSchema } from '../validators/auth.validator.js';
+import { registerSchema, loginSchema, forgotPasswordSchema, verifyOtpSchema, resetPasswordSchema } from '../validators/auth.validator.js';
 import {
   registerUser,
   loginUser,
   rotateRefreshToken,
   logoutUser,
-  getCurrentUser
+  getCurrentUser,
+  requestPasswordReset,
+  verifyOTPCode,
+  resetPassword as resetUserPassword
 } from '../services/auth.service.js';
 import { AuthRequest } from '../middleware/auth.js';
 
@@ -122,3 +125,34 @@ export const getMe = async (req: AuthRequest, res: Response, next: NextFunction)
     next(error);
   }
 };
+
+export const forgotPassword = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { email, collegeCode } = forgotPasswordSchema.parse(req.body);
+    const result = await requestPasswordReset(email, collegeCode);
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyOtp = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { email, otp } = verifyOtpSchema.parse(req.body);
+    await verifyOTPCode(email, otp);
+    return res.status(200).json({ success: true, message: 'OTP verified successfully.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPassword = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { email, otp, password } = resetPasswordSchema.parse(req.body);
+    const result = await resetUserPassword(email, otp, password);
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+

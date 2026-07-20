@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import { useMutation } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import {
   HiOutlineChatBubbleLeftRight,
   HiOutlineXMark,
@@ -45,47 +47,11 @@ export function AIChatbot() {
   }, []);
 
   const handleVoiceInput = () => {
-    setIsRecording(true);
-    showToast('Listening (Hindi + English enabled)... Speak now', 'info');
-    
-    setTimeout(() => {
-      setIsRecording(false);
-      const voiceQueries = [
-        "mera attendance kitna hai?",
-        "kal ki classes kya hain?",
-        "DSA notes do",
-        "free period mein kya padhu?"
-      ];
-      const randomQuery = voiceQueries[Math.floor(Math.random() * voiceQueries.length)];
-      setInputValue(randomQuery);
-      showToast(`Voice transcribed: "${randomQuery}"`, 'success');
-    }, 2000);
+    showToast('Coming Soon', 'warning');
   };
 
   const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    const userMsg: Message = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
-      text: `📂 Uploaded: ${file.name} (PDF notes)`,
-      timestamp: new Date()
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsTyping(true);
-    
-    setTimeout(() => {
-      const summaryText = `📄 **PDF Summary: ${file.name}**\n\nI have parsed and summarized the document:\n- **Topic**: Data Structures & SQL Normalization notes.\n- **Core details**: Covers Stack & Queue implementation, binary trees traversal, and database forms (1NF, 2NF, 3NF).\n- **Key Takeaways**: Stacks follow LIFO, databases require atomic values for 1NF, and key dependencies for 2NF.\n\nLet me know if you want to generate a practice quiz from this text!`;
-      const aiMsg: Message = {
-        id: `msg-${Date.now() + 1}`,
-        sender: 'ai',
-        text: summaryText,
-        timestamp: new Date()
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 1200);
+    showToast('Upload analysis coming soon.', 'warning');
   };
 
   // Set initial welcome message depending on user role
@@ -149,6 +115,34 @@ export function AIChatbot() {
     }
   };
 
+  const chatMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await api.post('/chatbot/message', { message: text });
+      if (!res.success) throw new Error(res.message);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      const aiMsg: Message = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'ai',
+        text: data.reply,
+        timestamp: new Date()
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+      setIsTyping(false);
+    },
+    onError: () => {
+      const aiMsg: Message = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'ai',
+        text: "Error connecting to AI service. Please try again later.",
+        timestamp: new Date()
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+      setIsTyping(false);
+    }
+  });
+
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
@@ -163,67 +157,7 @@ export function AIChatbot() {
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI thinking and reply
-    setTimeout(() => {
-      let responseText = '';
-      const query = text.toLowerCase();
-
-      if (!user) {
-        if (query.includes('what is') || query.includes('smartedu') || query.includes('ecosystem')) {
-          responseText = `🏫 **SmartEdu Campus** is a comprehensive, modern campus automation and learning platform.\n\nIt features: \n1. **Smart Attendance**: Rotating dynamic QR verification.\n2. **AI Timetable Generator**: Conflict-free schedule allocation via constraint solver algorithms.\n3. **Unified ERP & Finance**: Digital student ledgers, hostel lists, and fees gateways.\n4. **Rural Sync**: Offline PWA storage for low-bandwidth environments.`;
-        } else if (query.includes('attendance') || query.includes('qr') || query.includes('demo')) {
-          responseText = `📲 **Smart Attendance System:**\n\n- Eliminates proxy attendance with rotating QR codes refreshed every 30s.\n- Supports device fingerprint verification to prevent scanning for absent peers.\n- Facewise snapshot verification can be configured by institutions.`;
-        } else if (query.includes('schedule') || query.includes('timetable') || query.includes('ai')) {
-          responseText = `📅 **AI Constraint Timetable Roster:**\n\n- Solves the complex academic timetabling task in seconds using Google OR-Tools.\n- Automatically balances teacher hours, student workload constraints, classroom availability, and elective slots.`;
-        } else if (query.includes('onboard') || query.includes('register') || query.includes('college')) {
-          responseText = `🏫 **Ready to bring your institution onboard?**\n\nClick **"Onboard College"** in the top-right corner to register your campus. Once registered, a database tenant and an administrator account are instantly generated for your college!`;
-        } else {
-          responseText = `Welcome to SmartEdu Campus! You can explore the site features, try out the browser mockup controls, or click "Onboard College" to start. Let me know if you want to know about our smart modules!`;
-        }
-      } else if (user.role === 'student') {
-        if (query.includes('attendance') || query.includes('stats') || query.includes('shortage') || query.includes('kitna')) {
-          responseText = `📊 **Aapki Attendance Report (Overall: 86%):**\n\n- **Total Attended:** 93 classes\n- **Total Absent:** 15 classes\n- **Status:** Safe limit (Threshold: 75%)\n\n*Course-wise Standing:*\n- CSC-201 (Data Structures): 90% (18/20)\n- CSC-305 (DBMS): 80% (16/20)\n- ECE-301 (Digital Electronics): 85% (17/20)\n- MAT-301 (Math): 95% (19/20)\n- SEC-201 (Web Dev): 77% (14/18)\n- VAC-101 (Env Sci): 90% (9/10)`;
-        } else if (query.includes('timetable') || query.includes('class') || query.includes('schedule') || query.includes('kal की') || query.includes('kal ki')) {
-          responseText = `📅 **Kal ki Classes Schedule (Tomorrow):**\n\n1. **10:00 AM:** Data Structures (CSC-201) — Room LH-301\n2. **11:00 AM:** DBMS (CSC-305) — Room LH-401\n3. **01:30 PM:** Digital Electronics (ECE-301) — Room LH-302\n\n*Baki kal doopehr me aapka free period rahega!*`;
-        } else if (query.includes('dsa notes') || query.includes('dsa') || query.includes('notes')) {
-          responseText = `📚 **Here are your Data Structures & Algorithms notes summary:**\n\n- **Topic 1: Linked Lists**: Singly, Doubly, and Circular. Key ops: insertion, deletion, and reversal.\n- **Topic 2: Trees & Graphs**: Binary Search Trees, BFS/DFS traversal, and Dijkstra algorithm.\n\n*Aap study material and full notes read karne ke liye [Learning Hub](/student/learn) par ja sakte hain.*`;
-        } else if (query.includes('free period') || query.includes('kya padhu') || query.includes('padhu')) {
-          responseText = `💡 **AI Recommendation (Free Period Activities):**\n\n1. 🎥 **Watch DSA Video**: Trees & Graphs implementation guide.\n2. 📝 **Practice Quiz**: SQL Normalization (First, Second, and Third Normal Form).\n3. 💼 **Resume Building**: Update your project details and experience keywords.\n\n*In me se kisi par bhi click karke direct practice start kar sakte hain!*`;
-        } else if (query.includes('fee') || query.includes('due') || query.includes('balance') || query.includes('money')) {
-          responseText = `💳 **Pending Fee Ledger Status:**\n\n- **Total Paid Dues:** ₹48,000 (Tuition, Library, Computer Lab)\n- **Outstanding Balance:** ₹24,500\n\n*Unpaid Fee Breakdown:*\n- Exam Fee (Sem-3): ₹2,500 (Due: June 15, 2026)\n- Hostel & Mess Charges: ₹22,000 (Due: June 15, 2026)\n\n*Tip: You can pay securely from your portal under "My Fees" using UPI or Cards.*`;
-        } else {
-          responseText = `I understand you have questions about your campus studies, Amit. As a **student**, you can view your real-time attendance standing, pay pending semester fees, read study notes on the "Learning Hub" tab, or schedule classes directly. Is there anything specific you would like me to retrieve?`;
-        }
-      } else if (user.role === 'faculty' || user.role === 'hod') {
-        if (query.includes('timetable') || query.includes('class') || query.includes('schedule') || query.includes('today')) {
-          responseText = `📅 **Dr. Rajesh, here is your Lecture Schedule today:**\n\n- **10:00 AM - 10:50 AM:** Data Structures (CSC-201) — Room LH-301 *(Completed — 45/48 present)*\n- **11:00 AM - 11:50 AM:** DS Lab (CSC-201P) — Room Lab-101 *(Completed — 22/24 present)*\n- **01:30 PM - 02:20 PM:** Algorithm Design (CSC-401) — Room LH-302 *(Upcoming)*\n- **03:30 PM - 04:20 PM:** DS Tutorial — Room LH-301 *(Upcoming)*`;
-        } else if (query.includes('course') || query.includes('assigned') || query.includes('subject')) {
-          responseText = `📚 **Assigned Courses & Student Count:**\n\n1. **CSC-201 (Data Structures):** 48 students enrolled (CSE Sem-3)\n2. **CSC-201P (DS Lab):** 24 students enrolled (CSE Sem-3 A)\n3. **CSC-401 (Algorithm Design):** 45 students enrolled (CSE Sem-5)`;
-        } else if (query.includes('attendance') || query.includes('average') || query.includes('standing') || query.includes('student')) {
-          responseText = `📈 **Student Performance Standing:**\n\n- **Average Class Attendance:** 90.2% (Excellent turnout)\n- **Students Under Shortage Alert (<75%):** 4 students flagged.\n- You can export attendance logs as a CSV file from the **Attendance Analytics** section.`;
-        } else {
-          responseText = `Hello Dr. Rajesh Kumar. As a **faculty member**, you can initialize live check-in sessions with rotating QR codes on your "Start Class" panel, review attendance trends, manage student roll lists, and apply for academic leave proxies. How can I help you today?`;
-        }
-      } else {
-        // Admin
-        if (query.includes('stat') || query.includes('overview') || query.includes('campus')) {
-          responseText = `🏢 **SmartEdu Campus Overview Stats:**\n\n- **Total Students:** 1,220 active enrollments\n- **Total Faculty Members:** 69 lecturers across 5 departments\n- **Average Daily Attendance:** 91.2% (920 present today)\n- **Hostel Occupancy:** 86%\n- **Total Fee Collection:** ₹18.5 Lakhs this month`;
-        } else if (query.includes('event') || query.includes('recent') || query.includes('activity')) {
-          responseText = `🔔 **Recent Campus Activity Log (Real-time):**\n\n1. **Dr. Rajesh Kumar** marked attendance for CSC-201 (45/48 present) — *5m ago*\n2. **Admin** added 25 new students to CSE department — *15m ago*\n3. **System** auto-scheduled the FYUP timetable slots — *1h ago*\n4. **Priya Sharma** cleared semester fees of ₹18,500 via UPI — *2h ago*`;
-        } else {
-          responseText = `System Admin console active. I can retrieve overall college statistics, database records, department allocations, admissions statuses, or security configurations. What would you like me to inspect?`;
-        }
-      }
-
-      const aiMsg: Message = {
-        id: `msg-${Date.now() + 1}`,
-        sender: 'ai',
-        text: responseText,
-        timestamp: new Date()
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 900);
+    chatMutation.mutate(text);
   };
 
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -10,10 +10,20 @@ import {
   HiOutlinePhone, HiOutlineMapPin, HiOutlineArrowPath,
   HiOutlineQrCode, HiOutlineIdentification, HiOutlineCheckBadge
 } from 'react-icons/hi2';
+import { api } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
+import { loadFaceApi, detectFaceFromVideo, isFaceApiReady } from '@/lib/faceDetection';
 
 export default function StudentProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
+  const { showToast } = useToast();
   const [isFlipped, setIsFlipped] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [enrollingFace, setEnrollingFace] = useState(false);
+  const [faceEnrolled, setFaceEnrolled] = useState(!!user?.studentData?.hasFaceEncoding);
+  const [showFaceCamera, setShowFaceCamera] = useState(false);
+  const faceVideoRef = useRef<HTMLVideoElement>(null);
+  const [faceStream, setFaceStream] = useState<MediaStream | null>(null);
 
   const studentName = user?.name || 'Abhishek Singh';
   const semester = user?.studentData?.semester ? `Semester ${user.studentData.semester}` : 'Semester 3';
@@ -22,8 +32,104 @@ export default function StudentProfilePage() {
   const rollNo = user?.studentData?.rollNumber || 'CSE-2023-045';
   const college = user?.collegeName || 'SmartEdu Campus';
   const email = user?.email || 'abhishek.singh@smartedu.edu';
-  const phone = '+91 98765 43210';
+  const phone = user?.phone || '+91 98765 43210';
   const address = 'A-24, Shalimar Gardens, Lucknow, Uttar Pradesh, 226010';
+
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') : 'http://localhost:4000';
+  const avatarUrl = user?.avatar 
+    ? (user.avatar.startsWith('http') ? user.avatar : `${backendUrl}${user.avatar}`) 
+    : '/student_avatar.png';
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file.', 'warning');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    setUploading(true);
+    try {
+      const res = await api.post('/upload/avatar', formData);
+      if (res.success) {
+        showToast('Avatar updated successfully!', 'success');
+        await refreshProfile();
+      } else {
+        showToast(res.message || 'Avatar upload failed.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error uploading avatar.', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const startFaceEnrollment = async () => {
+    setShowFaceCamera(true);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 480, height: 480 } });
+      setFaceStream(s);
+      if (faceVideoRef.current) {
+        faceVideoRef.current.srcObject = s;
+      }
+      // Pre-load face detection models
+      await loadFaceApi();
+    } catch (err: any) {
+      showToast('Could not access webcam: ' + err.message, 'error');
+      setShowFaceCamera(false);
+    }
+  };
+
+  const captureFaceDescriptor = async () => {
+    if (!faceVideoRef.current || !isFaceApiReady()) {
+      showToast('Face detection models not ready. Please wait.', 'warning');
+      return;
+    }
+    setEnrollingFace(true);
+    try {
+      const result = await detectFaceFromVideo(faceVideoRef.current);
+      if (!result.detected || !result.descriptor) {
+        showToast('No face detected. Please center your face and try again.', 'warning');
+        setEnrollingFace(false);
+        return;
+      }
+
+      // Save descriptor to backend
+      const res = await api.post('/upload/face-descriptor', {
+        descriptor: Array.from(result.descriptor)
+      });
+
+      if (res.success) {
+        showToast('Face enrolled successfully! \u2705', 'success');
+        setFaceEnrolled(true);
+        setShowFaceCamera(false);
+        // Stop camera
+        if (faceStream) {
+          faceStream.getTracks().forEach(t => t.stop());
+          setFaceStream(null);
+        }
+        await refreshProfile();
+      } else {
+        showToast(res.message || 'Face enrollment failed.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error during face enrollment.', 'error');
+    } finally {
+      setEnrollingFace(false);
+    }
+  };
+
+  const cancelFaceEnrollment = () => {
+    setShowFaceCamera(false);
+    if (faceStream) {
+      faceStream.getTracks().forEach(t => t.stop());
+      setFaceStream(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fadeIn pb-12">
@@ -79,20 +185,32 @@ export default function StudentProfilePage() {
 
                 {/* ID Picture and Name */}
                 <div className="flex flex-col items-center text-center my-4">
-                  <div className="relative group">
+                  <div className="relative group cursor-pointer">
                     <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-primary to-secondary opacity-30 blur-sm group-hover:opacity-50 transition-opacity" />
-                    <img 
-                      src="/student_avatar.png" 
-                      alt="Student Portrait" 
-                      className="w-24 h-24 rounded-2xl object-cover border border-border bg-bg-elevated relative z-10 shadow-md"
-                    />
+                    <label className="cursor-pointer relative z-10 block">
+                      <img 
+                        src={avatarUrl} 
+                        alt="Student Portrait" 
+                        className={`w-24 h-24 rounded-2xl object-cover border border-border bg-bg-elevated shadow-md ${uploading ? 'opacity-50' : ''}`}
+                      />
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleAvatarChange} 
+                        className="hidden" 
+                        disabled={uploading}
+                      />
+                      <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[10px] text-white font-bold">
+                        {uploading ? 'Uploading...' : 'Change Photo'}
+                      </div>
+                    </label>
                   </div>
                   <h3 className="text-sm font-black text-text-primary mt-3 tracking-tight flex items-center gap-1">
                     {studentName}
                     <HiOutlineCheckBadge className="w-4 h-4 text-primary-light shrink-0" />
                   </h3>
                   <p className="text-[9px] text-text-muted font-bold tracking-widest uppercase mt-0.5">
-                    {deptCode} • Semester 3
+                    {deptCode} • {semester}
                   </p>
                 </div>
 
@@ -251,6 +369,53 @@ export default function StudentProfilePage() {
                 <p className="text-[9px] text-text-dim uppercase font-bold tracking-wide">Permanent Address</p>
                 <p className="text-xs font-bold text-text-primary leading-normal">{address}</p>
               </div>
+            </div>
+          </Card>
+
+          {/* Face Enrollment Card */}
+          <Card title="Face Recognition Enrollment" subtitle="Enroll your face for secure attendance verification">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${faceEnrolled ? 'bg-success/10 border border-success/20' : 'bg-amber-500/10 border border-amber-500/20'}`}>
+                  {faceEnrolled ? '\u2705' : '\ud83d\udc64'}
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-text-primary">
+                    {faceEnrolled ? 'Face Enrolled' : 'Face Not Enrolled'}
+                  </p>
+                  <p className="text-[10px] text-text-muted">
+                    {faceEnrolled ? 'Your face is registered for secure attendance verification.' : 'Enroll your face to enable biometric attendance check-in.'}
+                  </p>
+                </div>
+              </div>
+
+              {showFaceCamera ? (
+                <div className="space-y-3">
+                  <div className="relative rounded-xl overflow-hidden border border-border bg-black aspect-square max-w-[280px] mx-auto">
+                    <video ref={faceVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 border-2 border-dashed border-primary/40 rounded-xl pointer-events-none" />
+                    <p className="absolute bottom-2 left-0 right-0 text-center text-[9px] text-white/80 font-bold bg-black/50 py-1">Center your face in the frame</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={captureFaceDescriptor}
+                      disabled={enrollingFace}
+                      className="flex-1"
+                    >
+                      {enrollingFace ? 'Processing...' : '\ud83e\udde0 Capture & Enroll'}
+                    </Button>
+                    <Button variant="ghost" onClick={cancelFaceEnrollment}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant={faceEnrolled ? 'ghost' : 'primary'}
+                  onClick={startFaceEnrollment}
+                  className="w-full"
+                >
+                  {faceEnrolled ? '\ud83d\udd04 Re-enroll Face' : '\ud83d\udcf7 Start Face Enrollment'}
+                </Button>
+              )}
             </div>
           </Card>
 

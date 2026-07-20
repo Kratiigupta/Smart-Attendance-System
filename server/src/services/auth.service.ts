@@ -4,6 +4,8 @@ import { College } from '../models/College.js';
 import { User, Student, Faculty, Parent } from '../models/User.js';
 import { RefreshToken } from '../models/RefreshToken.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
+import { OTP } from '../models/OTP.js';
+import { sendOTPEmail } from './email.service.js';
 
 
 
@@ -325,5 +327,62 @@ export const getCurrentUser = async (userId: string) => {
 
   return profile;
 };
+
+export const requestPasswordReset = async (email: string, collegeCode: string) => {
+  const college = await College.findOne({ code: collegeCode });
+  if (!college) {
+    throw { status: 404, message: `College with code ${collegeCode} does not exist.` };
+  }
+
+  const user = await User.findOne({ email, collegeId: college._id });
+  if (!user) {
+    throw { status: 404, message: `User with email ${email} is not registered in this college.` };
+  }
+
+  // Generate 6 digit numeric OTP
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Save/Overwrite OTP
+  await OTP.findOneAndUpdate(
+    { email, purpose: 'reset_password' },
+    { otp: otpCode, createdAt: new Date() },
+    { upsert: true, new: true }
+  );
+
+  // Send Email
+  await sendOTPEmail(email, otpCode, 'Password Reset');
+  return { success: true, message: 'OTP sent successfully.' };
+};
+
+export const verifyOTPCode = async (email: string, otp: string) => {
+  const record = await OTP.findOne({ email, otp, purpose: 'reset_password' });
+  if (!record) {
+    throw { status: 400, message: 'Invalid or expired OTP code.' };
+  }
+  return true;
+};
+
+export const resetPassword = async (email: string, otp: string, passwordNew: string) => {
+  const record = await OTP.findOne({ email, otp, purpose: 'reset_password' });
+  if (!record) {
+    throw { status: 400, message: 'Invalid or expired OTP code.' };
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw { status: 404, message: 'User not found.' };
+  }
+
+  // Hash new password
+  const passwordHash = await bcrypt.hash(passwordNew, 12);
+  user.passwordHash = passwordHash;
+  await user.save();
+
+  // Delete OTP
+  await record.deleteOne();
+
+  return { success: true, message: 'Password has been reset successfully.' };
+};
+
 
 

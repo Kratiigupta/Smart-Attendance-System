@@ -3,7 +3,9 @@ import { AuthRequest } from '../middleware/auth.js';
 import {
   getStudentAnalytics,
   getFacultyAnalytics,
-  getAdminAnalytics
+  getAdminOverview,
+  getAdminCharts,
+  getAdminActivity
 } from '../services/analytics.service.js';
 
 export const getStudentDashboard = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -44,19 +46,37 @@ export const getFacultyDashboard = async (req: AuthRequest, res: Response, next:
   }
 };
 
-export const getAdminDashboard = async (req: AuthRequest, res: Response, next: NextFunction) => {
+export const getAdminDashboardOverview = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const collegeId = req.user?.collegeId;
-    if (!collegeId) {
-      throw { status: 400, message: 'College context is missing.' };
-    }
+    if (!collegeId) throw { status: 400, message: 'College context is missing.' };
 
-    const data = await getAdminAnalytics(collegeId);
+    const data = await getAdminOverview(collegeId);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    return res.status(200).json({
-      success: true,
-      data
-    });
+export const getAdminDashboardCharts = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    if (!collegeId) throw { status: 400, message: 'College context is missing.' };
+
+    const data = await getAdminCharts(collegeId);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAdminDashboardActivity = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const collegeId = req.user?.collegeId;
+    if (!collegeId) throw { status: 400, message: 'College context is missing.' };
+
+    const data = await getAdminActivity(collegeId);
+    return res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
   }

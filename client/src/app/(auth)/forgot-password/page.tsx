@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
 import {
   HiOutlineEnvelope,
   HiOutlineBuildingLibrary,
@@ -45,12 +46,22 @@ export default function ForgotPasswordPage() {
     if (!validate()) return;
 
     setIsLoading(true);
-    // Simulate sending OTP
-    setTimeout(() => {
+    try {
+      const res = await api.post('/auth/forgot-password', {
+        email: formData.email,
+        collegeCode: formData.collegeCode
+      });
+      if (res.success) {
+        showToast(res.message || 'A 6-digit OTP code has been sent to your email.', 'success');
+        router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&college=${encodeURIComponent(formData.collegeCode)}`);
+      } else {
+        showToast(res.message || 'Failed to send OTP code. Please check your credentials.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error connection failed.', 'error');
+    } finally {
       setIsLoading(false);
-      showToast('A 6-digit OTP code has been sent to your email.', 'success');
-      router.push(`/otp-verification?email=${encodeURIComponent(formData.email)}&college=${encodeURIComponent(formData.collegeCode)}`);
-    }, 1500);
+    }
   };
 
   return (

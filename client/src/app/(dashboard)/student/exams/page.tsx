@@ -8,7 +8,11 @@ import { HiOutlineAcademicCap, HiOutlineCalendarDays } from 'react-icons/hi2';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
+import { useAuth } from '@/contexts/AuthContext';
+import { jsPDF } from 'jspdf';
+
 export default function StudentExamsPage() {
+  const { user } = useAuth();
   const { data: exams = [], isLoading } = useQuery<any[]>({
     queryKey: ['studentExams'],
     queryFn: async () => {
@@ -17,6 +21,33 @@ export default function StudentExamsPage() {
       return res.data || [];
     }
   });
+
+  const handleDownloadAdmitCard = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('SmartEdu Campus - Admit Card', 105, 20, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text(`Name: ${user?.name || 'Student'}`, 20, 40);
+    doc.text(`College ID: ${user?.collegeId || 'N/A'}`, 20, 50);
+    doc.text('Examination: Term End Exams', 20, 60);
+    
+    doc.setLineWidth(0.5);
+    doc.line(20, 65, 190, 65);
+    
+    let y = 80;
+    doc.setFontSize(10);
+    doc.text('Schedule:', 20, 75);
+    if (exams.length > 0) {
+      exams.forEach((exam: any) => {
+        doc.text(`- ${exam.subject} (${exam.code}) on ${exam.date} at ${exam.time} | Room: ${exam.room} | Seat: ${exam.seat}`, 20, y);
+        y += 10;
+      });
+    } else {
+      doc.text('No exams scheduled.', 20, y);
+    }
+
+    doc.save('SmartEdu_Admit_Card.pdf');
+  };
 
   if (isLoading) {
     return (
@@ -37,7 +68,7 @@ export default function StudentExamsPage() {
             View schedules, room allocations, and grades.
           </p>
         </div>
-        <Button variant="primary" size="sm">
+        <Button variant="primary" size="sm" onClick={handleDownloadAdmitCard}>
           Download Admit Card
         </Button>
       </div>

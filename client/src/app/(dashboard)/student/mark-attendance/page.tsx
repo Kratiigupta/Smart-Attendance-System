@@ -22,6 +22,7 @@ import { QRScannerView } from '@/components/scanner/QRScannerView';
 import { SubjectDetectionCard } from '@/components/scanner/SubjectDetectionCard';
 import { VerificationStatus, VerificationState } from '@/components/scanner/VerificationStatus';
 import { VerificationSuccessModal } from '@/components/scanner/VerificationSuccessModal';
+import { loadFaceApi, detectFaceFromVideo, compareFaceDescriptors, isFaceApiReady } from '@/lib/faceDetection';
 
 type Step = 'scan' | 'face' | 'success' | 'error';
 type InputMode = 'camera' | 'manual';
@@ -77,6 +78,8 @@ export default function StudentMarkAttendancePage() {
   const [isSimulatingFace, setIsSimulatingFace] = useState(false);
   const [faceCaptureLoading, setFaceCaptureLoading] = useState(false);
   const [webcamSnapshot, setWebcamSnapshot] = useState<string>('');
+  const [faceApiAvailable, setFaceApiAvailable] = useState(false);
+  const [enrolledDescriptor, setEnrolledDescriptor] = useState<Float32Array | null>(null);
 
   // Complete status state
   const [submitLoading, setSubmitLoading] = useState(false);
@@ -231,6 +234,26 @@ export default function StudentMarkAttendancePage() {
     }
   }, [currentStep, isSimulatingFace]);
 
+  // Load face-api.js models when reaching face step
+  useEffect(() => {
+    if (currentStep === 'face') {
+      // Try to load face-api models
+      loadFaceApi().then((loaded) => {
+        setFaceApiAvailable(loaded);
+        if (loaded) {
+          console.log('🧠 Face detection AI models ready');
+        }
+      });
+
+      // Fetch enrolled face descriptor from backend
+      api.get('/upload/face-descriptor').then((res) => {
+        if (res.success && res.data?.enrolled && res.data.descriptor) {
+          setEnrolledDescriptor(new Float32Array(res.data.descriptor));
+        }
+      }).catch(() => { /* no-op */ });
+    }
+  }, [currentStep]);
+
   const handleManualProceed = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSessionId) {
@@ -251,7 +274,7 @@ export default function StudentMarkAttendancePage() {
     setCurrentStep('face');
   };
 
-  const handleCaptureFace = () => {
+  const handleCaptureFace = async () => {
     setIdentityStatus('loading');
     if (isSimulatingFace) {
       simulateFaceVerify();
@@ -270,6 +293,35 @@ export default function StudentMarkAttendancePage() {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
         const snapshot = canvas.toDataURL('image/jpeg');
         setWebcamSnapshot(snapshot);
+
+        // Attempt face detection with face-api.js before stopping camera
+        if (faceApiAvailable && isFaceApiReady()) {
+          try {
+            const result = await detectFaceFromVideo(videoRef.current);
+            if (!result.detected) {
+              showToast('No face detected. Please center your face in the frame and try again.', 'warning');
+              setFaceCaptureLoading(false);
+              setIdentityStatus('failed');
+              return;
+            }
+
+            // If student has an enrolled descriptor, compare
+            if (enrolledDescriptor && result.descriptor) {
+              const match = compareFaceDescriptors(result.descriptor, enrolledDescriptor, 0.6);
+              if (!match.match) {
+                showToast(`Face mismatch detected (distance: ${match.distance.toFixed(2)}). Please try again.`, 'error');
+                setFaceCaptureLoading(false);
+                setIdentityStatus('failed');
+                return;
+              }
+              showToast('Face verified successfully! ✅', 'success');
+            } else {
+              showToast('Face detected. Proceeding with check-in.', 'info');
+            }
+          } catch (faceErr) {
+            console.warn('Face detection had an issue, proceeding with snapshot only:', faceErr);
+          }
+        }
 
         // Turn off physical camera immediately
         if (stream) {
@@ -592,20 +644,22 @@ export default function StudentMarkAttendancePage() {
                   {isSimulatingFace ? 'Simulate Face' : 'Verify Identity'}
                 </Button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFaceCaptureLoading(true);
-                  showToast('Bypassing face matching for demo...', 'info');
-                  setTimeout(() => {
-                    setFaceCaptureLoading(false);
-                    submitAttendanceRecord(scannedSessionId, scannedOtp, 'data:image/jpeg;base64,BYPASSED_FACE_SNAPSHOT');
-                  }, 800);
-                }}
-                className="text-[10px] text-primary-light hover:text-primary font-bold uppercase tracking-wider py-1.5 hover:underline cursor-pointer border border-dashed border-primary/20 rounded-xl hover:border-primary/45 bg-primary/5 transition-all w-full text-center"
-              >
-                ⚡ Optional: Skip Face Match (Direct Check-In)
-              </button>
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFaceCaptureLoading(true);
+                    showToast('Bypassing face matching for demo...', 'info');
+                    setTimeout(() => {
+                      setFaceCaptureLoading(false);
+                      submitAttendanceRecord(scannedSessionId, scannedOtp, 'data:image/jpeg;base64,BYPASSED_FACE_SNAPSHOT');
+                    }, 800);
+                  }}
+                  className="text-[10px] text-primary-light hover:text-primary font-bold uppercase tracking-wider py-1.5 hover:underline cursor-pointer border border-dashed border-primary/20 rounded-xl hover:border-primary/45 bg-primary/5 transition-all w-full text-center"
+                >
+                  ⚡ Optional: Skip Face Match (Direct Check-In)
+                </button>
+              )}
             </div>
           </Card>
         )}

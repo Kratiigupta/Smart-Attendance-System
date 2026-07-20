@@ -27,3 +27,20 @@ export const loginSchema = z.object({
   password: z.string(),
   collegeCode: z.string().toUpperCase()
 });
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+  collegeCode: z.string().toUpperCase()
+});
+
+export const verifyOtpSchema = z.object({
+  email: z.string().email(),
+  otp: z.string().length(6)
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  otp: z.string().length(6),
+  password: z.string().min(6)
+});
+

@@ -14,6 +14,7 @@ export interface IClassSession extends Document {
   otp: string; // Dynamic software check-in code / rotating pin
   otpExpiresAt?: Date;
   roomName?: string;
+  meetingUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,7 +33,8 @@ const classSessionSchema = new Schema<IClassSession>(
     status: { type: String, enum: ['active', 'completed', 'scheduled'], default: 'active', required: true },
     otp: { type: String, default: '' },
     otpExpiresAt: { type: Date },
-    roomName: { type: String, default: '' }
+    roomName: { type: String, default: '' },
+    meetingUrl: { type: String, default: null }
   },
   { timestamps: true }
 );

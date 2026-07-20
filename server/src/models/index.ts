@@ -15,6 +15,7 @@ export { AdmissionApplication } from './Admission.js';
 export { Room } from './Room.js';
 export { HostelBlock, HostelRoom } from './Hostel.js';
 export { LeaveApplication } from './Leave.js';
+export { TimetableSlot } from './TimetableSlot.js';
 
 export type { ICollege } from './College.js';
 export type { IUser, IStudent, IFaculty } from './User.js';
@@ -33,3 +34,4 @@ export type { IAdmissionApplication } from './Admission.js';
 export type { IRoom } from './Room.js';
 export type { IHostelBlock, IHostelRoom } from './Hostel.js';
 export type { ILeaveApplication } from './Leave.js';
+export type { ITimetableSlot } from './TimetableSlot.js';

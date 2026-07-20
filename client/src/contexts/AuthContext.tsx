@@ -113,6 +113,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     silentAuth();
+
+    // Register PWA Service Worker
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((reg) => console.log('🟢 PWA Service Worker registered successfully:', reg.scope))
+          .catch((err) => console.error('🔴 PWA Service Worker registration failed:', err));
+      });
+    }
   }, []);
 
   const login = async (email: string, password: string, collegeCode: string) => {

@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 
 import { api } from '@/lib/api';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 
 
 const statusColors: Record<string, { text: string; badge: 'success' | 'primary' | 'default' | 'warning' }> = {
@@ -69,8 +69,23 @@ export default function FacultyDashboard() {
   const [sortOrder, setSortOrder] = useState<'none' | 'asc' | 'desc'>('none');
 
   // Handle student alerts
-  const handleAlertStudent = (name: string) => {
-    showToast(`Attendance shortage warning sent to ${name}.`, 'success');
+  const alertMutation = useMutation({
+    mutationFn: async (studentId: string) => {
+      const res = await api.post('/notifications/alert-attendance', { studentId });
+      if (!res.success) throw new Error(res.message);
+      return res.data;
+    },
+    onSuccess: (_, variables) => {
+      const student = weakStudents.find((s: any) => s._id === variables || s.id === variables || s.name === variables);
+      showToast(`Attendance shortage warning sent to ${student?.name || 'student'}.`, 'success');
+    },
+    onError: (err: any) => {
+      showToast(err.message || 'Failed to send warning.', 'error');
+    }
+  });
+
+  const handleAlertStudent = (studentId: string, name: string) => {
+    alertMutation.mutate(studentId || name);
   };
 
   // Process today's schedule dynamically from sessions
@@ -99,6 +114,7 @@ export default function FacultyDashboard() {
 
   const weakStudents = analytics?.weakStudents ?? [];
   const courseStats = analytics?.courseStats ?? [];
+  const engagementStats = analytics?.engagementStats ?? [];
   const totalCourses = analytics?.totalCourses ?? 0;
   const totalStudents = analytics?.totalStudents ?? 0;
   const avgAttendance = analytics?.avgAttendance ?? '90.2%';
@@ -293,7 +309,7 @@ export default function FacultyDashboard() {
                             variant="danger"
                             size="xs"
                             icon={<HiOutlineEnvelope className="w-3 h-3" />}
-                            onClick={() => handleAlertStudent(student.name)}
+                            onClick={() => handleAlertStudent(student._id, student.name)}
                             title="Send Warning Notification"
                           />
                         )}
@@ -326,19 +342,21 @@ export default function FacultyDashboard() {
           {/* Class Engagement card */}
           <Card title="Class Engagement" subtitle="Average participation ratings">
             <div className="space-y-3 mt-3">
-              {[
-                { course: 'Data Structures', rate: engagementScore, status: 'High' },
-                { course: 'Data Structures Lab', rate: Math.max(50, engagementScore - 6), status: 'Good' },
-                { course: 'Algorithm Design', rate: Math.max(50, engagementScore - 12), status: 'Average' },
-              ].map((c: any, i: number) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span className="text-text-secondary">{c.course}</span>
-                    <span className="text-primary-light font-mono">{c.rate}% ({c.status})</span>
-                  </div>
-                  <ProgressBar value={c.rate} max={100} size="xs" color={c.rate > 90 ? 'success' : 'primary'} />
+              {engagementStats.length === 0 ? (
+                <div className="py-4 text-center text-xs text-text-muted">
+                  No engagement data available yet.
                 </div>
-              ))}
+              ) : (
+                engagementStats.map((c: any, i: number) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="flex justify-between text-[10px] font-bold">
+                      <span className="text-text-secondary">{c.course}</span>
+                      <span className="text-primary-light font-mono">{c.rate}% ({c.status})</span>
+                    </div>
+                    <ProgressBar value={c.rate} max={100} size="xs" color={c.rate > 90 ? 'success' : 'primary'} />
+                  </div>
+                ))
+              )}
             </div>
           </Card>
 

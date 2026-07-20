@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { api } from '@/lib/api';
 import {
   HiOutlineLockClosed,
   HiOutlineKey,
@@ -47,22 +48,45 @@ function OTPVerificationForm() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
 
     setIsLoading(true);
-    // Simulate verifying OTP and updating password
-    setTimeout(() => {
+    try {
+      const res = await api.post('/auth/reset-password', {
+        email,
+        otp,
+        password: newPassword
+      });
+      if (res.success) {
+        showToast(res.message || 'Password reset successfully. You can now login.', 'success');
+        router.push('/login');
+      } else {
+        showToast(res.message || 'Verification or password update failed.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error connection failed.', 'error');
+    } finally {
       setIsLoading(false);
-      showToast('Password reset successfully. You can now login.', 'success');
-      router.push('/login');
-    }, 2000);
+    }
   };
 
-  const handleResendOTP = () => {
-    setTimer(60);
-    showToast('A new 6-digit OTP code has been sent.', 'success');
+  const handleResendOTP = async () => {
+    try {
+      const res = await api.post('/auth/forgot-password', {
+        email,
+        collegeCode: college
+      });
+      if (res.success) {
+        setTimer(60);
+        showToast('A new 6-digit OTP code has been sent.', 'success');
+      } else {
+        showToast(res.message || 'Failed to resend OTP.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Network error.', 'error');
+    }
   };
 
   return (

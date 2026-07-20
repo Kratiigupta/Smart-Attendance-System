@@ -3,19 +3,14 @@ import { Course } from '../models/Course.js';
 import { ClassSession } from '../models/ClassSession.js';
 import { Attendance } from '../models/Attendance.js';
 import { Department } from '../models/Department.js';
+import { FeeItem } from '../models/Fee.js';
+import { HostelRoom } from '../models/Hostel.js';
 import mongoose from 'mongoose';
 
 export const getStudentAnalytics = async (collegeId: string, studentId: string) => {
   const student = await Student.findById(studentId);
   if (!student) {
     throw { status: 404, message: 'Student not found.' };
-  }
-
-  // Auto-enroll student in default courses if empty in preview
-  if (!student.enrolledCourses || student.enrolledCourses.length === 0) {
-    const defaultCourses = await Course.find({ collegeId }).limit(5);
-    student.enrolledCourses = defaultCourses.map(c => c._id);
-    await student.save();
   }
 
   // Count overall completed class sessions of student's enrolled courses
@@ -32,7 +27,7 @@ export const getStudentAnalytics = async (collegeId: string, studentId: string) 
   });
 
   const totalAbsent = Math.max(0, totalClasses - totalAttended);
-  const overallPct = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 100;
+  const overallPct = totalClasses > 0 ? Math.round((totalAttended / totalClasses) * 100) : 0;
 
   // Weekly Trend calculation (Past 8 Weeks)
   const weeklyTrend = [];
@@ -55,7 +50,7 @@ export const getStudentAnalytics = async (collegeId: string, studentId: string) 
       date: { $gte: weekStart, $lte: weekEnd }
     });
 
-    const rate = completedInWeek > 0 ? Math.round((attendedInWeek / completedInWeek) * 100) : 90 - (i % 3) * 5; // dynamic fallback with slight variation
+    const rate = completedInWeek > 0 ? Math.round((attendedInWeek / completedInWeek) * 100) : 0;
     weeklyTrend.push({
       name: `W${8 - i}`,
       rate
@@ -64,7 +59,9 @@ export const getStudentAnalytics = async (collegeId: string, studentId: string) 
 
   // Low Attendance Prediction
   let lowAttendancePrediction = '';
-  if (overallPct < 75) {
+  if (totalClasses === 0) {
+    lowAttendancePrediction = 'No sessions have been conducted yet.';
+  } else if (overallPct < 75) {
     const classesNeeded = Math.ceil((0.75 * totalClasses - totalAttended) / 0.25);
     lowAttendancePrediction = `Shortage Warning: You need to attend the next ${classesNeeded} lectures consecutively to reach 75%.`;
   } else {
@@ -122,12 +119,15 @@ export const getStudentAnalytics = async (collegeId: string, studentId: string) 
       status: 'present'
     });
 
+    const courseFaculty = await Faculty.findOne({ assignedCourses: course._id });
+    const facultyName = courseFaculty ? courseFaculty.name : 'Not Assigned';
+
     coursesBreakdown.push({
       code: course.code,
       name: course.title,
-      faculty: 'Faculty Instructor',
-      attended: attended || (total > 0 ? attended : 18),
-      total: total || 20,
+      faculty: facultyName,
+      attended,
+      total,
       type: course.type || 'DSC',
       color: COLORS[colorIdx++ % COLORS.length]
     });
@@ -135,12 +135,12 @@ export const getStudentAnalytics = async (collegeId: string, studentId: string) 
 
   return {
     overallPct,
-    totalAttended: totalClasses > 0 ? totalAttended : totalAttended || 90,
-    totalAbsent: totalClasses > 0 ? totalAbsent : totalAbsent || 10,
-    totalClasses: totalClasses || 100,
+    totalAttended,
+    totalAbsent,
+    totalClasses,
     weeklyTrend,
     lowAttendancePrediction,
-    streak: streak || 12,
+    streak,
     courses: coursesBreakdown
   };
 };
@@ -149,13 +149,6 @@ export const getFacultyAnalytics = async (collegeId: string, facultyId: string) 
   const faculty = await Faculty.findById(facultyId);
   if (!faculty) {
     throw { status: 404, message: 'Faculty not found.' };
-  }
-
-  // Auto-assign faculty default courses if empty in preview
-  if (!faculty.assignedCourses || faculty.assignedCourses.length === 0) {
-    const defaultCourses = await Course.find({ collegeId }).limit(3);
-    faculty.assignedCourses = defaultCourses.map(c => c._id);
-    await faculty.save();
   }
 
   // Query all students in the college
@@ -181,12 +174,12 @@ export const getFacultyAnalytics = async (collegeId: string, facultyId: string) 
         status: 'present'
       });
 
-      const rate = total > 0 ? Math.round((attended / total) * 100) : (student.name.charCodeAt(0) % 20) + 65; // fallback with variation
+      const rate = total > 0 ? Math.round((attended / total) * 100) : 100;
 
       if (rate < 75) {
         weakStudents.push({
           name: student.name,
-          rollNo: student.rollNumber || 'CSE-2023-' + student.name.charCodeAt(0),
+          rollNo: student.rollNumber || 'N/A',
           attendance: rate,
           email: student.email
         });
@@ -208,35 +201,42 @@ export const getFacultyAnalytics = async (collegeId: string, facultyId: string) 
 
     courseStats.push({
       name: course.code,
-      value: count || 45,
+      value: count,
       color: COLORS[colorIdx++ % COLORS.length]
     });
   }
 
   // Live session stats
   const activeSession = await ClassSession.findOne({ collegeId, facultyId, status: 'active' });
-  const liveSessionStats = activeSession 
-    ? {
-        sessionId: activeSession._id,
-        active: true,
-        courseCode: (await Course.findById(activeSession.courseId))?.code || 'N/A',
-        present: await Attendance.countDocuments({ classSessionId: activeSession._id }),
-        total: 48
-      }
-    : { active: false };
+  let liveSessionStats;
+  if (activeSession) {
+    const totalEnrolled = await Student.countDocuments({ collegeId, enrolledCourses: activeSession.courseId });
+    liveSessionStats = {
+      sessionId: activeSession._id,
+      active: true,
+      courseCode: (await Course.findById(activeSession.courseId))?.code || 'N/A',
+      present: await Attendance.countDocuments({ classSessionId: activeSession._id, status: 'present' }),
+      total: totalEnrolled
+    };
+  } else {
+    liveSessionStats = { active: false };
+  }
 
   // Overall Avg Attendance
-  const totalSessions = await ClassSession.countDocuments({ collegeId, facultyId, status: 'completed' });
-  let totalAttends = 0;
-  if (totalSessions > 0) {
-    totalAttends = await Attendance.countDocuments({
-      collegeId,
-      courseId: { $in: faculty.assignedCourses }
-    });
+  const completedSessions = await ClassSession.find({ collegeId, facultyId, status: 'completed' });
+  let totalEnrolled = 0;
+  let totalPresent = 0;
+
+  for (const session of completedSessions) {
+    const enrolledCount = await Student.countDocuments({ collegeId, enrolledCourses: session.courseId });
+    const presentCount = await Attendance.countDocuments({ classSessionId: session._id, status: 'present' });
+    totalEnrolled += enrolledCount;
+    totalPresent += presentCount;
   }
-  const avgAttendance = totalSessions > 0 
-    ? `${Math.round(((totalAttends / totalSessions) / 48) * 100)}%` 
-    : '90.2%';
+
+  const avgAttendance = totalEnrolled > 0
+    ? `${Math.round((totalPresent / totalEnrolled) * 100)}%`
+    : '0%';
 
   // Daily attendance rates of the past 6 weekdays (Mon-Sat) for this faculty member's sessions
   const weeklyAttendanceData = [];
@@ -260,18 +260,21 @@ export const getFacultyAnalytics = async (collegeId: string, facultyId: string) 
       startTime: { $gte: dayStart, $lte: dayEnd }
     });
 
-    let rate = 90; // Default fallback if no class on that day
+    let rate = 0;
     if (sessionsOnDay.length > 0) {
+      let enrolledSum = 0;
       const sessionIds = sessionsOnDay.map(s => s._id);
+      for (const session of sessionsOnDay) {
+        const enrolledCount = await Student.countDocuments({ collegeId, enrolledCourses: session.courseId });
+        enrolledSum += enrolledCount;
+      }
       const attendsCount = await Attendance.countDocuments({
         collegeId,
-        classSessionId: { $in: sessionIds }
+        classSessionId: { $in: sessionIds },
+        status: 'present'
       });
-      rate = Math.round((attendsCount / (sessionsOnDay.length * 48)) * 100);
+      rate = enrolledSum > 0 ? Math.round((attendsCount / enrolledSum) * 100) : 0;
       if (rate > 100) rate = 100;
-    } else {
-      // Dynamic simulated fallback to keep the chart populated
-      rate = 90 - (i % 3) * 4;
     }
 
     weeklyAttendanceData.push({
@@ -280,116 +283,227 @@ export const getFacultyAnalytics = async (collegeId: string, facultyId: string) 
     });
   }
 
+  const totalStudentsCount = courseStats.reduce((sum, c) => sum + c.value, 0);
+
+  const engagementStats = [];
+  for (const course of facultyCourses) {
+    // Generate derived real stat
+    const courseEnrolled = await Student.countDocuments({ collegeId, enrolledCourses: course._id });
+    const courseAttends = await Attendance.countDocuments({ collegeId, courseId: course._id, status: 'present' });
+    const courseTotalAttends = await ClassSession.countDocuments({ collegeId, courseId: course._id, status: 'completed' }) * courseEnrolled;
+    const rate = courseTotalAttends > 0 ? Math.round((courseAttends / courseTotalAttends) * 100) : 0;
+    
+    engagementStats.push({
+      course: course.title || course.code,
+      rate,
+      status: rate > 85 ? 'High' : rate > 75 ? 'Good' : 'Average'
+    });
+  }
+
   return {
     totalCourses: faculty.assignedCourses.length,
-    totalStudents: (courseStats.reduce((sum, c) => sum + c.value, 0)) || 117,
+    totalStudents: totalStudentsCount,
     avgAttendance,
     weakStudents,
     courseStats,
     liveSessionStats,
-    engagementScore: 88,
+    engagementStats,
+    engagementScore: totalEnrolled > 0 ? Math.round((totalPresent / totalEnrolled) * 100) : 0,
     weeklyAttendanceData
   };
 };
 
-export const getAdminAnalytics = async (collegeId: string) => {
+export const getAdminOverview = async (collegeId: string) => {
   const [totalStudents, totalFaculty, activeSessionsCount] = await Promise.all([
-    Student.countDocuments({ collegeId, role: 'student' }),
-    Faculty.countDocuments({ collegeId, role: { $in: ['faculty', 'hod'] } }),
-    ClassSession.countDocuments({ collegeId, status: 'active' })
+    Student.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), role: 'student' }),
+    Faculty.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), role: { $in: ['faculty', 'hod'] } }),
+    ClassSession.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), status: 'active' })
   ]);
 
-  // Fee Status Deterministic Calculation (85% paid, 15% pending)
-  const studentCount = totalStudents || 120;
-  const feeRate = 55000;
-  const totalFees = studentCount * feeRate;
-  const paidFees = Math.round(totalFees * 0.85);
-  const pendingFees = totalFees - paidFees;
+  const feeItems = await FeeItem.aggregate([
+    { $match: { collegeId: new mongoose.Types.ObjectId(collegeId) } },
+    { $group: { _id: '$status', total: { $sum: '$amount' } } }
+  ]);
+  const paidAmount = feeItems.find(f => f._id === 'Paid')?.total || 0;
+  const unpaidAmount = feeItems.find(f => f._id === 'Unpaid')?.total || 0;
 
-  const formattedCollected = `₹${(paidFees / 100000).toFixed(1)}L`;
-  const formattedPending = `₹${(pendingFees / 100000).toFixed(1)}L`;
+  const formattedCollected = `₹${(paidAmount / 100000).toFixed(1)}L`;
+  const formattedPending = `₹${(unpaidAmount / 100000).toFixed(1)}L`;
 
-  // Hostel Occupancy (deterministic 86% occupancy)
-  const hostelOccupied = Math.round(studentCount * 0.35);
-  const hostelTotal = Math.round(studentCount * 0.40);
-  const hostelOccupancyRate = hostelTotal > 0 ? Math.round((hostelOccupied / hostelTotal) * 100) : 86;
+  const hostelStats = await HostelRoom.aggregate([
+    { $match: { collegeId: new mongoose.Types.ObjectId(collegeId) } },
+    { $group: { _id: null, totalCapacity: { $sum: '$capacity' }, totalOccupants: { $sum: { $cond: { if: { $isArray: '$occupants' }, then: { $size: '$occupants' }, else: 0 } } } } }
+  ]);
+  const hostelTotal = hostelStats[0]?.totalCapacity || 0;
+  const hostelOccupied = hostelStats[0]?.totalOccupants || 0;
+  const hostelOccupancyRate = hostelTotal > 0 ? Math.round((hostelOccupied / hostelTotal) * 100) : 0;
 
-  // Department Breakdown
-  const depts = await Department.find({ collegeId }).select('name code');
+  const depts = await Department.find({ collegeId: new mongoose.Types.ObjectId(collegeId) }).select('name code');
   const departmentBreakdown = await Promise.all(depts.map(async (d) => {
-    const sCount = await Student.countDocuments({ collegeId, departmentId: d._id });
-    const fCount = await Faculty.countDocuments({ collegeId, departmentId: d._id });
-
-    return {
-      name: d.code,
-      students: sCount || 150,
-      faculty: fCount || 10
-    };
+    const sCount = await Student.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), departmentId: d._id });
+    const fCount = await Faculty.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), departmentId: d._id });
+    return { name: d.code, students: sCount, faculty: fCount };
   }));
 
-  // Live classes in progress
-  const activeSessions = await ClassSession.find({ collegeId, status: 'active' })
+  const activeSessions = await ClassSession.find({ collegeId: new mongoose.Types.ObjectId(collegeId), status: 'active' })
     .populate('courseId', 'title code')
     .populate('facultyId', 'name');
-
   const liveClasses = await Promise.all(activeSessions.map(async (s) => {
-    const present = await Attendance.countDocuments({ classSessionId: s._id });
+    const present = await Attendance.countDocuments({ classSessionId: s._id, status: 'present' });
+    const totalEnrolled = await Student.countDocuments({ collegeId: new mongoose.Types.ObjectId(collegeId), enrolledCourses: s.courseId });
     return {
       course: s.courseId ? (s.courseId as any).title : 'Lecture Session',
       code: s.courseId ? (s.courseId as any).code : 'N/A',
       faculty: s.facultyId ? (s.facultyId as any).name : 'Faculty Instructor',
       room: s.roomName || 'LH-301',
       present,
-      total: 48,
+      total: totalEnrolled,
       status: 'active'
     };
   }));
 
-  // Course distribution by NEP categories
-  const courses = await Course.find({ collegeId });
-  const courseTypesMap: Record<string, number> = {};
-  courses.forEach(c => {
-    courseTypesMap[c.type] = (courseTypesMap[c.type] || 0) + 1;
-  });
+  return {
+    totalStudents,
+    totalFaculty,
+    activeSessionsCount,
+    feeStatus: { collected: formattedCollected, pending: formattedPending },
+    hostelOccupancy: { rate: `${hostelOccupancyRate}%`, occupied: hostelOccupied, total: hostelTotal },
+    departmentBreakdown,
+    liveClasses
+  };
+};
 
+export const getAdminCharts = async (collegeId: string) => {
+  const objId = new mongoose.Types.ObjectId(collegeId);
+
+  // 1. Course Distribution (aggregate)
+  const courseTypes = await Course.aggregate([
+    { $match: { collegeId: objId } },
+    { $group: { _id: '$type', count: { $sum: 1 } } }
+  ]);
   const COLORS = ['#6366f1', '#14b8a6', '#f59e0b', '#8b5cf6', '#f43f5e', '#06b6d4'];
-  let colorIdx = 0;
-  const courseTypeData = Object.keys(courseTypesMap).map(type => ({
-    name: type,
-    value: courseTypesMap[type],
-    color: COLORS[colorIdx++ % COLORS.length]
+  const courseTypeData = courseTypes.map((c, i) => ({
+    name: c._id || 'Other',
+    value: c.count,
+    color: COLORS[i % COLORS.length]
   }));
 
-  if (courseTypeData.length === 0) {
-    // Fill mockup types if empty
-    courseTypeData.push(
-      { name: 'DSC (Major)', value: 42, color: '#6366f1' },
-      { name: 'Minor', value: 18, color: '#14b8a6' },
-      { name: 'MDC', value: 12, color: '#f59e0b' }
-    );
+  // 2. Gender Data (aggregate)
+  const genderStats = await Student.aggregate([
+    { $match: { collegeId: objId, role: 'student' } },
+    { $group: { _id: '$gender', count: { $sum: 1 } } }
+  ]);
+  const genderData = genderStats.map((g, i) => ({
+    name: g._id || 'Unknown',
+    value: g.count,
+    color: COLORS[i % COLORS.length]
+  }));
+
+  // 3. Programme Data (aggregate)
+  const progStats = await Student.aggregate([
+    { $match: { collegeId: objId, role: 'student' } },
+    { $group: { _id: '$program', count: { $sum: 1 } } }
+  ]);
+  const programmeData = progStats.map(p => ({
+    name: p._id || 'Regular',
+    students: p.count
+  }));
+
+  // 4. Weekly Attendance (aggregate last 6 days)
+  const sixDaysAgo = new Date();
+  sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
+  const attStats = await Attendance.aggregate([
+    { $match: { collegeId: objId, date: { $gte: sixDaysAgo } } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$date' } }, present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } }, absent: { $sum: { $cond: [{ $eq: ['$status', 'absent'] }, 1, 0] } } } },
+    { $sort: { _id: 1 } }
+  ]);
+  const weeklyAttendance = attStats.map(a => ({
+    name: new Date(a._id).toLocaleDateString('en-US', { weekday: 'short' }),
+    present: a.present,
+    absent: a.absent
+  }));
+
+  // 5. Monthly Enrollment (aggregate)
+  const monthlyStats = await Student.aggregate([
+    { $match: { collegeId: objId, role: 'student' } },
+    { $group: { _id: { $month: '$createdAt' }, students: { $sum: 1 } } },
+    { $sort: { _id: 1 } }
+  ]);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthlyEnrollment = monthlyStats.map(m => ({
+    name: months[m._id - 1] || 'Unknown',
+    students: m.students
+  }));
+
+  // 6. Attendance by Month (aggregate)
+  const monthlyAttStats = await Attendance.aggregate([
+    { $match: { collegeId: objId } },
+    { $group: { _id: { $month: '$date' }, total: { $sum: 1 }, present: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } } } },
+    { $sort: { _id: 1 } }
+  ]);
+  const attendanceByMonth = monthlyAttStats.map(m => ({
+    name: months[m._id - 1] || 'Unknown',
+    rate: m.total > 0 ? Math.round((m.present / m.total) * 100) : 0
+  }));
+
+  // 7. Dept Performance (aggregate)
+  const depts = await Department.find({ collegeId: objId }).select('_id code name');
+  const deptPerformance = [];
+  
+  for (const d of depts) {
+    const students = await Student.find({ collegeId: objId, departmentId: d._id, role: 'student' }).select('_id');
+    const studentIds = students.map(s => s._id);
+
+    if (studentIds.length > 0) {
+      // Attendance rate
+      const presentCount = await Attendance.countDocuments({ collegeId: objId, studentId: { $in: studentIds }, status: 'present' });
+      const totalAttends = await Attendance.countDocuments({ collegeId: objId, studentId: { $in: studentIds } });
+      const attendanceRate = totalAttends > 0 ? Math.round((presentCount / totalAttends) * 100) : 0;
+
+      // Fee collection rate
+      const feeItems = await FeeItem.aggregate([
+        { $match: { collegeId: objId, studentId: { $in: studentIds } } },
+        { $group: { _id: '$status', total: { $sum: '$amount' } } }
+      ]);
+      const paid = feeItems.find(f => f._id === 'Paid')?.total || 0;
+      const unpaid = feeItems.find(f => f._id === 'Unpaid')?.total || 0;
+      const feeCollectionRate = (paid + unpaid) > 0 ? Math.round((paid / (paid + unpaid)) * 100) : 0;
+
+      deptPerformance.push({
+        dept: d.code,
+        attendance: attendanceRate,
+        feeCollection: feeCollectionRate,
+        passRate: 100 // exams not fully modeled yet
+      });
+    } else {
+      deptPerformance.push({
+        dept: d.code,
+        attendance: 0,
+        feeCollection: 0,
+        passRate: 100
+      });
+    }
   }
 
+  const monthlyTrend = attendanceByMonth.map(a => ({
+    name: a.name,
+    attendance: a.rate,
+    fee: 85 // Static average until monthly fees are fully modeled
+  }));
+
   return {
-    totalStudents: totalStudents || 1220,
-    totalFaculty: totalFaculty || 69,
-    activeSessionsCount,
-    feeStatus: {
-      collected: formattedCollected,
-      pending: formattedPending
-    },
-    hostelOccupancy: {
-      rate: `${hostelOccupancyRate}%`,
-      occupied: hostelOccupied || 86,
-      total: hostelTotal || 100
-    },
-    departmentBreakdown: departmentBreakdown.length > 0 ? departmentBreakdown : [
-      { name: 'CSE', students: 320, faculty: 18 },
-      { name: 'ECE', students: 280, faculty: 15 },
-      { name: 'ME', students: 240, faculty: 14 }
-    ],
-    liveClasses: liveClasses.length > 0 ? liveClasses : [
-      { course: 'Data Structures', code: 'CSC-201', faculty: 'Dr. Rajesh Kumar', room: 'LH-301', present: 45, total: 48, status: 'active' }
-    ],
-    courseTypeData
+    courseTypeData,
+    genderData,
+    programmeData,
+    weeklyAttendance,
+    monthlyEnrollment,
+    attendanceByMonth,
+    deptPerformance,
+    monthlyTrend
   };
+};
+
+export const getAdminActivity = async (collegeId: string) => {
+  // Aggregate recent events (mocked as simple list since an actual activity log model might not exist, but returning empty array keeps it data-driven)
+  return [];
 };

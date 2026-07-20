@@ -26,11 +26,7 @@ import { StatsSkeleton, CardSkeleton } from '@/components/ui/AttendanceSkeleton'
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 
-const freePeriodSuggestions = [
-  { icon: '🎥', title: 'Watch DSA Video', subject: 'Trees & Graphs', duration: '15 min', type: 'Video' },
-  { icon: '📝', title: 'Practice Quiz', subject: 'SQL Normalization & Indexing', duration: '10 min', type: 'Quiz' },
-  { icon: '💼', title: 'Resume Building', subject: 'Update experience & skills', duration: '20 min', type: 'Project' },
-];
+import jsPDF from 'jspdf';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -63,10 +59,46 @@ export default function StudentDashboard() {
   const rollNo = user?.studentData?.rollNumber || 'CSE-2023-045';
 
   const handleJoinClass = () => {
-    showToast('Connecting to virtual classroom... Live Stream joined successfully!', 'success');
+    const activeClass = todaySchedule.find(s => s.status === 'active');
+    if (activeClass?.meetingUrl) {
+      window.open(activeClass.meetingUrl, '_blank');
+    } else {
+      showToast('No active class meeting link available at this moment.', 'warning');
+    }
   };
 
   const handleDownloadIdCard = () => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [85.6, 53.98] // Standard CR80 ID Card size
+    });
+
+    doc.setFillColor(30, 41, 59); // bg-secondary
+    doc.rect(0, 0, 54, 86, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(user?.collegeName?.toUpperCase() || 'SMARTEDU CAMPUS', 27, 10, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.text(studentName, 27, 45, { align: 'center' });
+    
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 200, 200);
+    doc.text(`${deptCode} • ${semester}`, 27, 50, { align: 'center' });
+    
+    doc.text(`ID: ${rollNo}`, 5, 65);
+    doc.text('Valid: 2023 - 2027', 5, 70);
+    
+    doc.setDrawColor(16, 185, 129); // success green
+    doc.setTextColor(16, 185, 129);
+    doc.text('ACTIVE STUDENT', 5, 80);
+
+    doc.save(`${rollNo}_ID_Card.pdf`);
+    
     showToast('Student ID card PDF downloaded successfully!', 'success');
     setShowIdCard(false);
   };
@@ -89,11 +121,18 @@ export default function StudentDashboard() {
       faculty: slot.faculty,
       room: slot.room,
       type: slot.type,
-      status
+      status,
+      meetingUrl: slot.meetingUrl
     };
-  }) : [
-    { time: '10:00 AM', course: 'No classes scheduled today', code: 'FREE', faculty: '-', room: '-', type: 'Lecture' as const, status: 'completed' }
-  ];
+  }) : [];
+
+  // Generate dynamic free period suggestions based on todaySchedule gaps
+  let freePeriodSuggestions: any[] = [];
+  if (todaySchedule.length === 0) {
+    freePeriodSuggestions.push({ icon: '🏖️', title: 'Free Day', subject: 'No scheduled classes today', duration: 'All Day', type: 'Break' });
+  } else if (todaySchedule.length < 3) {
+    freePeriodSuggestions.push({ icon: '📚', title: 'Self Study', subject: 'Library available', duration: 'Afternoon', type: 'Study' });
+  }
 
   if (analyticsLoading || timetableLoading) {
     return (
@@ -143,7 +182,7 @@ export default function StudentDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         <StatCard title="Overall Attendance" value={`${overallPct}%`} icon={HiOutlineClipboardDocumentCheck} color="success" subtitle={`${totalAttended} Present / ${totalAbsent} Absent`} />
         <StatCard title="Enrolled Courses" value={coursesList.length} icon={HiOutlineAcademicCap} color="primary" subtitle="Sem 3 FYUP" />
-        <StatCard title="Classes Today" value={4} icon={HiOutlineClock} color="accent" subtitle="1 completed, 1 active" />
+        <StatCard title="Classes Today" value={todaySlots.length} icon={HiOutlineClock} color="accent" subtitle={todaySlots.length > 0 ? "Check your schedule" : "No classes today"} />
         <StatCard title="Pending Fees" value="₹24,500" icon={HiOutlineCreditCard} color="danger" subtitle="Due by June 15, 2026" />
       </div>
 
@@ -281,19 +320,25 @@ export default function StudentDashboard() {
             headerRight={<HiOutlineSparkles className="w-4 h-4 text-accent-light" />}
           >
             <div className="space-y-2.5 mt-2">
-              {freePeriodSuggestions.map((s, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-2.5 rounded-xl bg-bg-secondary/40 border border-border/15 hover:bg-bg-hover/50 cursor-pointer transition-all hover:border-primary/20"
-                >
-                  <span className="text-xl">{s.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-bold text-text-primary truncate">{s.title}</p>
-                    <p className="text-[9px] text-text-muted">{s.subject} • {s.duration}</p>
-                  </div>
-                  <Badge variant="violet" size="xs">{s.type}</Badge>
+              {freePeriodSuggestions.length === 0 ? (
+                <div className="py-4 text-center text-xs text-text-muted">
+                  No free periods available today.
                 </div>
-              ))}
+              ) : (
+                freePeriodSuggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 p-2.5 rounded-xl bg-bg-secondary/40 border border-border/15 hover:bg-bg-hover/50 cursor-pointer transition-all hover:border-primary/20"
+                  >
+                    <span className="text-xl">{s.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-bold text-text-primary truncate">{s.title}</p>
+                      <p className="text-[9px] text-text-muted">{s.subject} • {s.duration}</p>
+                    </div>
+                    <Badge variant="violet" size="xs">{s.type}</Badge>
+                  </div>
+                ))
+              )}
             </div>
           </Card>
         </div>

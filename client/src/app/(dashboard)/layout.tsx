@@ -11,7 +11,9 @@ import {
   HiOutlineChatBubbleLeftRight,
   HiOutlineExclamationTriangle,
   HiOutlineCheckCircle,
-  HiOutlineInformationCircle
+  HiOutlineInformationCircle,
+  HiOutlineBars3,
+  HiOutlineBars3BottomLeft
 } from 'react-icons/hi2';
 import { getSocket } from '@/lib/socket';
 
@@ -42,6 +44,47 @@ export default function DashboardLayout({
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  useEffect(() => {
+    if (searchQuery.trim().length < 2) {
+      setSearchResults(null);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setIsSearchLoading(true);
+      try {
+        const res = await api.get(`/search?q=${encodeURIComponent(searchQuery)}`);
+        if (res.success) {
+          setSearchResults(res.data);
+        }
+      } catch (err) {
+        console.error('Search error:', err);
+      } finally {
+        setIsSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const handleOutsideSearchClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#search-container')) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideSearchClick);
+    return () => document.removeEventListener('mousedown', handleOutsideSearchClick);
+  }, []);
 
   // Fetch real notifications via TanStack Query
   const { data: notifications = [], refetch: refetchNotifications } = useQuery<NotificationItem[]>({
@@ -168,12 +211,12 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex-1 min-h-screen flex bg-bg-primary text-text-primary">
+    <div className="flex-1 min-h-screen flex bg-bg-primary text-text-primary overflow-x-hidden">
       {/* Sidebar navigation */}
-      <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} isCollapsed={sidebarCollapsed} />
 
       {/* Main content pane */}
-      <div className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-h-screen">
+      <div className={`flex-1 flex flex-col transition-all duration-300 min-h-screen ${sidebarCollapsed ? 'md:pl-0' : 'md:pl-64'}`}>
         {/* Top Navbar */}
         <header className="h-16 border-b border-border bg-bg-secondary flex items-center justify-between px-6 shrink-0 z-30 sticky top-0">
           <div className="flex items-center gap-3 flex-1">
@@ -183,20 +226,130 @@ export default function DashboardLayout({
             >
               ☰
             </button>
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden md:flex p-1.5 rounded-lg hover:bg-bg-hover text-text-secondary hover:text-text-primary cursor-pointer border border-border transition-colors"
+              title="Toggle Sidebar"
+            >
+              {sidebarCollapsed ? <HiOutlineBars3 className="w-5 h-5" /> : <HiOutlineBars3BottomLeft className="w-5 h-5" />}
+            </button>
             <h2 className="font-heading font-extrabold text-base text-text-primary tracking-tight hidden lg:block mr-4">
               {user.collegeName || 'SmartEdu Campus Portal'}
             </h2>
 
             {/* Topbar Search Bar */}
-            <div className="relative max-w-xs w-full hidden sm:block">
+            <div id="search-container" className="relative max-w-xs w-full hidden sm:block">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-muted">
                 <HiOutlineMagnifyingGlass className="w-4 h-4" />
               </span>
               <input
                 type="text"
-                placeholder="Search courses, attendance, roster..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setIsSearchFocused(true)}
+                placeholder="Search courses, rosters, quick links..."
                 className="w-full bg-bg-input border border-border/50 rounded-xl pl-9 pr-4 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary/45 focus:ring-1 focus:ring-primary/40 font-semibold"
               />
+              
+              {/* Search dropdown results */}
+              {isSearchFocused && (searchQuery.trim().length >= 2 || searchResults) && (
+                <div className="absolute left-0 mt-2 w-80 bg-bg-secondary border border-border rounded-2xl shadow-xl z-50 overflow-hidden max-h-96 overflow-y-auto divide-y divide-border/30 animate-fadeIn">
+                  {isSearchLoading ? (
+                    <div className="p-4 text-center text-[10px] text-text-muted font-bold flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border border-primary border-t-transparent rounded-full animate-spin" />
+                      Searching...
+                    </div>
+                  ) : searchResults && (
+                    Object.values(searchResults).some((arr: any) => arr && arr.length > 0) ? (
+                      <div className="p-2 space-y-2 text-xs">
+                        {searchResults.links && searchResults.links.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-text-dim uppercase px-2 tracking-wider">Quick Actions</span>
+                            {searchResults.links.map((link: any, idx: number) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  router.push(link.path);
+                                  setIsSearchFocused(false);
+                                  setSearchQuery('');
+                                }}
+                                className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-bg-hover text-[11px] text-text-primary font-semibold flex items-center justify-between cursor-pointer"
+                              >
+                                <span>⚡ {link.title}</span>
+                                <span className="text-[9px] text-text-dim">Go →</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {searchResults.courses && searchResults.courses.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-text-dim uppercase px-2 tracking-wider">Courses</span>
+                            {searchResults.courses.map((course: any) => (
+                              <div
+                                key={course._id}
+                                className="px-2 py-1.5 rounded-lg hover:bg-bg-hover text-[11px] text-text-primary font-semibold flex flex-col"
+                              >
+                                <span>📚 {course.title}</span>
+                                <span className="text-[9px] text-text-dim font-mono">{course.code}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {searchResults.students && searchResults.students.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-text-dim uppercase px-2 tracking-wider">Students</span>
+                            {searchResults.students.map((student: any) => (
+                              <div
+                                key={student._id}
+                                className="px-2 py-1.5 rounded-lg hover:bg-bg-hover text-[11px] text-text-primary font-semibold flex flex-col"
+                              >
+                                <span>👤 {student.name}</span>
+                                <span className="text-[9px] text-text-dim font-mono">{student.rollNumber || student.email}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {searchResults.departments && searchResults.departments.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-text-dim uppercase px-2 tracking-wider">Departments</span>
+                            {searchResults.departments.map((dept: any) => (
+                              <div
+                                key={dept._id}
+                                className="px-2 py-1.5 rounded-lg hover:bg-bg-hover text-[11px] text-text-primary font-semibold flex flex-col"
+                              >
+                                <span>🏛️ {dept.name}</span>
+                                <span className="text-[9px] text-text-dim font-mono">{dept.code}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {searchResults.assignments && searchResults.assignments.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-text-dim uppercase px-2 tracking-wider">Assignments</span>
+                            {searchResults.assignments.map((asg: any) => (
+                              <div
+                                key={asg._id}
+                                className="px-2 py-1.5 rounded-lg hover:bg-bg-hover text-[11px] text-text-primary font-semibold flex flex-col"
+                              >
+                                <span>📝 {asg.title}</span>
+                                <span className="text-[9px] text-text-dim">Status: {asg.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center text-[10px] text-text-muted font-bold">
+                        No matches found.
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
